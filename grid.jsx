@@ -159,11 +159,13 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme }) {
   const totalW = gridW * cell + (gridW - 1) * gap;
   const totalH = gridH * cell + (gridH - 1) * gap;
 
-  const center = p => {
-    const [w, h] = getDims(p);
+  // Get the center of the glyph cell (not the entire placement)
+  const glyphCenter = p => {
+    const shapeCells = getShapeCells(p);
+    const [gx, gy] = pickGlyphCell(shapeCells);
     return {
-      x: p.x * (cell + gap) + (w * cell + (w - 1) * gap) / 2,
-      y: p.y * (cell + gap) + (h * cell + (h - 1) * gap) / 2,
+      x: (p.x + gx) * (cell + gap) + cell / 2,
+      y: (p.y + gy) * (cell + gap) + cell / 2,
     };
   };
 
@@ -191,8 +193,8 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme }) {
     >
       {mode === "edges" &&
         adjPairs.map((pair, i) => {
-          const ca = center(pair.a),
-            cb = center(pair.b);
+          const ca = glyphCenter(pair.a),
+            cb = glyphCenter(pair.b);
           const colorA = ITEM_BY_ID[pair.a.type].color;
           const positive = pair.delta >= 0;
           const stroke = positive ? colorA : "oklch(0.7 0.18 25)";
@@ -224,8 +226,8 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme }) {
         })}
       {mode === "lines" &&
         adjPairs.map((pair, i) => {
-          const ca = center(pair.a),
-            cb = center(pair.b);
+          const ca = glyphCenter(pair.a),
+            cb = glyphCenter(pair.b);
           const mx = (ca.x + cb.x) / 2;
           const my = (ca.y + cb.y) / 2;
           const positive = pair.delta >= 0;
