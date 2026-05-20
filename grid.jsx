@@ -2,6 +2,32 @@
 
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
+// Pick the most "central" cell in a shape: maximize neighbors in shape, tiebreak by distance to centroid.
+function pickGlyphCell(shapeCells) {
+  if (shapeCells.length === 0) return [0, 0];
+  if (shapeCells.length === 1) return shapeCells[0];
+  const set = new Set(shapeCells.map(([x, y]) => `${x},${y}`));
+  const cx = shapeCells.reduce((s, c) => s + c[0], 0) / shapeCells.length;
+  const cy = shapeCells.reduce((s, c) => s + c[1], 0) / shapeCells.length;
+  let best = shapeCells[0];
+  let bestNeighbors = -1;
+  let bestDist = Infinity;
+  for (const [x, y] of shapeCells) {
+    let n = 0;
+    if (set.has(`${x + 1},${y}`)) n++;
+    if (set.has(`${x - 1},${y}`)) n++;
+    if (set.has(`${x},${y + 1}`)) n++;
+    if (set.has(`${x},${y - 1}`)) n++;
+    const d = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
+    if (n > bestNeighbors || (n === bestNeighbors && d < bestDist)) {
+      best = [x, y];
+      bestNeighbors = n;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
 // ---------- placed item rendered on grid (cell-by-cell for complex shapes) ----------
 function PlacedItem({
   p,
