@@ -196,34 +196,56 @@ function Tray({
           );
         })}
 
-        <button
-          onClick={onAddNew}
-          title="Define new object type"
-          style={{
-            width: tileSize,
-            height: tileSize,
-            border: `1px dashed ${isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.18)"}`,
-            borderRadius: 8,
-            background: "transparent",
-            color: isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.45)",
-            font: "300 28px/1 Inter, sans-serif",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "border-color 120ms, color 120ms",
-          }}
-          onPointerEnter={e => {
-            e.currentTarget.style.borderColor = "oklch(0.78 0.12 195)";
-            e.currentTarget.style.color = "oklch(0.78 0.12 195)";
-          }}
-          onPointerLeave={e => {
-            e.currentTarget.style.borderColor = isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.18)";
-            e.currentTarget.style.color = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.45)";
-          }}
-        >
-          +
-        </button>
+        {canCreateNewObject(itemTypes) ? (
+          <button
+            onClick={onAddNew}
+            title="Define new object type"
+            style={{
+              width: tileSize,
+              height: tileSize,
+              border: `1px dashed ${isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.18)"}`,
+              borderRadius: 8,
+              background: "transparent",
+              color: isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.45)",
+              font: "300 28px/1 Inter, sans-serif",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "border-color 120ms, color 120ms",
+            }}
+            onPointerEnter={e => {
+              e.currentTarget.style.borderColor = "oklch(0.78 0.12 195)";
+              e.currentTarget.style.color = "oklch(0.78 0.12 195)";
+            }}
+            onPointerLeave={e => {
+              e.currentTarget.style.borderColor = isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.18)";
+              e.currentTarget.style.color = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.45)";
+            }}
+          >
+            +
+          </button>
+        ) : (
+          <div
+            title={`Maximum ${MAX_OBJECT_TYPES} object types reached`}
+            style={{
+              width: tileSize,
+              height: tileSize,
+              border: `1px dashed ${isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.08)"}`,
+              borderRadius: 8,
+              background: "transparent",
+              color: isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.2)",
+              font: "300 28px/1 Inter, sans-serif",
+              cursor: "not-allowed",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: 0.5,
+            }}
+          >
+            +
+          </div>
+        )}
       </div>
     </div>
   );
@@ -391,12 +413,22 @@ function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDel
   return (
     <div>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
-        <GlyphIconButton
-          glyph={itemType.glyph}
-          color={itemType.color}
-          theme={theme}
-          onPick={g => update({ glyph: g })}
-        />
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            padding: 7,
+            border: `1px solid ${border}`,
+            borderRadius: 6,
+            background: inputBg,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Glyph kind={itemType.glyph} style="solid" color={itemType.color} w={1} h={1} />
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...labelStyle, marginBottom: 4 }}>Name</div>
           <TextField
@@ -407,21 +439,10 @@ function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDel
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginBottom: 14 }}>
         <div>
           <div style={{ ...labelStyle, marginBottom: 4 }}>Base</div>
           <NumberField value={itemType.base} onCommit={v => update({ base: v })} style={inputStyle} />
-        </div>
-        <div>
-          <div style={{ ...labelStyle, marginBottom: 4 }}>Color</div>
-          <ColorField
-            value={itemType.color}
-            onCommit={v => update({ color: v })}
-            theme={theme}
-            inputBg={inputBg}
-            border={border}
-            fg={fg}
-          />
         </div>
       </div>
 
@@ -1181,35 +1202,47 @@ function InlineTweaks({ t, setTweak, theme }) {
   );
 }
 
-// ---- New Object Type modal ----
+// Random name generator — uses assigned combo's color and shape names
+function getComboName(combo) {
+  if (!combo) return "New Object";
+  const colorName = COLOR_NAMES[combo.color] || "Unknown";
+  const glyphName = GLYPH_NAMES[combo.glyph] || "Shape";
+  return `${colorName} ${glyphName}`;
+}
+
+// ---- New Object modal (simplified, auto-assigns combo) ----
 function NewTypeModal({ open, onClose, onCreate, theme }) {
   const isWarm = theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
+  const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
   const fgFaint = isWarm ? "rgba(60,50,40,0.4)" : "rgba(255,255,255,0.35)";
   const border = isWarm ? "rgba(60,50,40,0.15)" : "rgba(255,255,255,0.1)";
   const surface = isWarm ? "#fbf8f0" : "#141a23";
   const inputBg = isWarm ? "rgba(255,253,247,0.6)" : "rgba(255,255,255,0.03)";
+  const cellBorder = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.08)";
+  const cellBg = isWarm ? "rgba(255,253,247,0.5)" : "rgba(255,255,255,0.02)";
   const accent = "oklch(0.78 0.12 195)";
 
-  const [name, setName] = React.useState("New Object");
+  const [name, setName] = React.useState("");
   const [base, setBase] = React.useState(5);
-  const [glyph, setGlyph] = React.useState("hex");
-  const [color, setColor] = React.useState("#5eead4");
-  const [w, setW] = React.useState(1);
-  const [h, setH] = React.useState(1);
   const [count, setCount] = React.useState(3);
+  const [assignedCombo, setAssignedCombo] = React.useState(null);
+  const [cells, setCells] = React.useState([]);
 
   React.useEffect(() => {
     if (open) {
-      setName("New Object");
+      const combo = getNextAvailableCombo(window.__TYPES || []);
+      if (!combo) {
+        onClose();
+        return;
+      }
+      setAssignedCombo(combo);
+      setCells(combo.cells);
+      setName(getComboName(combo));
       setBase(5);
-      setGlyph("hex");
-      setColor("#5eead4");
-      setW(1);
-      setH(1);
       setCount(3);
     }
-  }, [open]);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -1231,28 +1264,43 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
     marginBottom: 4,
   };
 
+  const toggleCell = (cx, cy) => {
+    const exists = cells.some(([x, y]) => x === cx && y === cy);
+    if (exists) {
+      const next = cells.filter(([x, y]) => !(x === cx && y === cy));
+      if (next.length > 0) setCells(next);
+    } else {
+      setCells([...cells, [cx, cy]]);
+    }
+  };
+
   const submit = () => {
+    if (!assignedCombo || cells.length === 0) return;
+    // Normalize to origin
+    const minX = Math.min(...cells.map(([x]) => x));
+    const minY = Math.min(...cells.map(([, y]) => y));
+    const normalized = cells.map(([x, y]) => [x - minX, y - minY]);
+
     const id = (name.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "type_") + Date.now().toString(36).slice(-3);
-    const pw = Math.max(1, Math.min(3, parseInt(w, 10) || 1));
-    const ph = Math.max(1, Math.min(3, parseInt(h, 10) || 1));
-    // Generate rectangular cells from w×h
-    const cells = [];
-    for (let cy = 0; cy < ph; cy++) for (let cx = 0; cx < pw; cx++) cells.push([cx, cy]);
     onCreate(
       {
         id,
         name: name || "Untitled",
-        glyph,
-        color,
+        glyph: assignedCombo.glyph,
+        color: assignedCombo.color,
+        cells: normalized,
         base: parseInt(base, 10) || 0,
         desc: "",
         synergy: {},
-        cells,
       },
       parseInt(count, 10) || 0,
     );
     onClose();
   };
+
+  const cellSize = 44;
+  const gap = 4;
+  const gridSize = 5;
 
   return (
     <div
@@ -1270,7 +1318,7 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: 380,
+          width: 400,
           padding: 20,
           background: surface,
           border: `1px solid ${border}`,
@@ -1278,42 +1326,102 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
           boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
-          <GlyphIconButton glyph={glyph} color={color} theme={theme} onPick={g => setGlyph(g)} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ ...labelStyle, marginBottom: 4 }}>Name</div>
-            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
-          </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ font: "600 15px/1.3 Inter, sans-serif", color: fg }}>New Object</div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginBottom: 12 }}>
-          <div>
-            <div style={labelStyle}>Color</div>
-            <input
-              type="color"
-              value={color}
-              onChange={e => setColor(e.target.value)}
-              style={{ ...inputStyle, padding: 2, height: 30 }}
-            />
-          </div>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ ...labelStyle, marginBottom: 4 }}>Name</div>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            style={{ ...inputStyle, font: "500 13px/1.2 Inter, sans-serif" }}
+            autoFocus
+          />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
           <div>
-            <div style={labelStyle}>Base</div>
+            <div style={labelStyle}>Base Score</div>
             <input type="number" value={base} onChange={e => setBase(e.target.value)} style={inputStyle} />
           </div>
           <div>
-            <div style={labelStyle}>W</div>
-            <input type="number" value={w} min={1} max={3} onChange={e => setW(e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <div style={labelStyle}>H</div>
-            <input type="number" value={h} min={1} max={3} onChange={e => setH(e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <div style={labelStyle}>Count</div>
+            <div style={labelStyle}>Quantity</div>
             <input type="number" value={count} onChange={e => setCount(e.target.value)} style={inputStyle} />
+          </div>
+        </div>
+
+        {/* Shape editor */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ ...labelStyle, marginBottom: 6 }}>Shape</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${gridSize}, ${cellSize}px)`,
+              gap: gap,
+              justifyContent: "center",
+            }}
+          >
+            {Array.from({ length: gridSize * gridSize }, (_, i) => {
+              const cy = Math.floor(i / gridSize);
+              const cx = i % gridSize;
+              const isActive = cells.some(([x, y]) => x === cx && y === cy);
+              return (
+                <button
+                  key={i}
+                  onClick={() => toggleCell(cx, cy)}
+                  style={{
+                    width: cellSize,
+                    height: cellSize,
+                    border: `1px solid ${isActive ? assignedCombo?.color : cellBorder}`,
+                    borderRadius: 6,
+                    background: isActive ? `${assignedCombo?.color}22` : cellBg,
+                    cursor: "pointer",
+                    transition: "all 140ms ease",
+                    position: "relative",
+                  }}
+                  onPointerEnter={e => {
+                    if (!isActive && assignedCombo) {
+                      e.currentTarget.style.borderColor = assignedCombo.color;
+                      e.currentTarget.style.background = `${assignedCombo.color}12`;
+                    }
+                  }}
+                  onPointerLeave={e => {
+                    if (!isActive) {
+                      e.currentTarget.style.borderColor = cellBorder;
+                      e.currentTarget.style.background = cellBg;
+                    }
+                  }}
+                >
+                  {isActive && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: assignedCombo?.color,
+                        fontSize: "18px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      ✓
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            style={{
+              marginTop: 8,
+              font: '11px/1.4 "JetBrains Mono", monospace',
+              color: fgDim,
+              textAlign: "center",
+            }}
+          >
+            {cells.length} cell{cells.length === 1 ? "" : "s"} selected
           </div>
         </div>
 
@@ -1321,7 +1429,14 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
           <button onClick={onClose} style={btnStyle(theme, "ghost")}>
             Cancel
           </button>
-          <button onClick={submit} style={{ ...btnStyle(theme, "primary"), padding: "8px 18px" }}>
+          <button
+            onClick={submit}
+            disabled={cells.length === 0}
+            style={{
+              ...btnStyle(theme, "primary", cells.length === 0),
+              padding: "8px 18px",
+            }}
+          >
             Create
           </button>
         </div>
