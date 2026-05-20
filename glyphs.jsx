@@ -110,6 +110,33 @@ function Glyph({ kind, style, color, w = 1, h = 1, cell = 56 }) {
       );
       break;
     }
+    case "star": {
+      const pts = [];
+      for (let i = 0; i < 5; i++) {
+        const aOuter = ((Math.PI * 2) / 5) * i - Math.PI / 2;
+        pts.push(`${cx + r * Math.cos(aOuter)},${cy + r * Math.sin(aOuter)}`);
+        const aInner = aOuter + Math.PI / 5;
+        pts.push(`${cx + r * 0.42 * Math.cos(aInner)},${cy + r * 0.42 * Math.sin(aInner)}`);
+      }
+      shape = (
+        <polygon points={pts.join(" ")} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
+      );
+      break;
+    }
+    case "cross": {
+      const arm = r * 0.35;
+      const len = r * 0.95;
+      shape = (
+        <polygon
+          points={`${cx - arm},${cy - len} ${cx + arm},${cy - len} ${cx + arm},${cy - arm} ${cx + len},${cy - arm} ${cx + len},${cy + arm} ${cx + arm},${cy + arm} ${cx + arm},${cy + len} ${cx - arm},${cy + len} ${cx - arm},${cy + arm} ${cx - len},${cy + arm} ${cx - len},${cy - arm} ${cx - arm},${cy - arm}`}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          strokeLinejoin="round"
+        />
+      );
+      break;
+    }
     default:
       shape = <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
   }

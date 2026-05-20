@@ -1,5 +1,52 @@
 // data.jsx — item catalog with cell-based shapes, adjacency rules, layout helpers
 
+// 8 highly contrasting colors × 8 recognizable glyphs = 64 unique combos
+const PREDEFINED_COLORS = [
+  "oklch(0.78 0.12 195)", // teal
+  "oklch(0.82 0.10 240)", // blue
+  "oklch(0.85 0.11 95)", // lime
+  "oklch(0.78 0.13 25)", // red-orange
+  "oklch(0.83 0.10 305)", // violet
+  "oklch(0.84 0.07 165)", // sage
+  "oklch(0.76 0.14 160)", // green
+  "oklch(0.80 0.12 45)", // amber
+];
+
+const PREDEFINED_GLYPHS = ["hex", "diamond", "tri", "rect", "circle", "pent", "star", "cross"];
+
+// Default cells for each glyph when auto-assigning
+const DEFAULT_CELLS_FOR_GLYPH = {
+  hex: [[0, 0]],
+  diamond: [[0, 0]],
+  tri: [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+  ],
+  rect: [
+    [0, 0],
+    [1, 0],
+    [2, 0],
+    [1, 1],
+  ],
+  circle: [[0, 0]],
+  pent: [
+    [0, 0],
+    [0, 1],
+    [1, 1],
+  ],
+  star: [
+    [0, 0],
+    [1, 0],
+  ],
+  cross: [
+    [0, 0],
+    [0, 1],
+  ],
+};
+
+const MAX_OBJECT_TYPES = PREDEFINED_COLORS.length * PREDEFINED_GLYPHS.length; // 64
+
 const ITEM_TYPES = [
   {
     id: "core",
@@ -75,6 +122,70 @@ const ITEM_TYPES = [
     ],
   },
 ];
+
+// Human-readable names for colors and glyphs
+const COLOR_NAMES = {
+  "oklch(0.78 0.12 195)": "Teal",
+  "oklch(0.82 0.10 240)": "Blue",
+  "oklch(0.85 0.11 95)": "Lime",
+  "oklch(0.78 0.13 25)": "Red",
+  "oklch(0.83 0.10 305)": "Violet",
+  "oklch(0.84 0.07 165)": "Sage",
+  "oklch(0.76 0.14 160)": "Green",
+  "oklch(0.80 0.12 45)": "Amber",
+};
+
+const GLYPH_NAMES = {
+  hex: "Hex",
+  diamond: "Diamond",
+  tri: "Triangle",
+  rect: "Rect",
+  circle: "Circle",
+  pent: "Pentagon",
+  star: "Star",
+  cross: "Cross",
+};
+
+// Helper to get a random available combo
+function getNextAvailableCombo(existingTypes) {
+  const usedCombos = new Set(existingTypes.map(t => `${t.glyph}:${t.color}`));
+
+  // Collect all available combos
+  const available = [];
+  for (const color of PREDEFINED_COLORS) {
+    for (const glyph of PREDEFINED_GLYPHS) {
+      const key = `${glyph}:${color}`;
+      if (!usedCombos.has(key)) {
+        available.push({ glyph, color, cells: DEFAULT_CELLS_FOR_GLYPH[glyph] || [[0, 0]] });
+      }
+    }
+  }
+
+  if (available.length === 0) return null;
+
+  // Find which colors and glyphs are least used among existing types
+  const usedColorCounts = {};
+  const usedGlyphCounts = {};
+  for (const t of existingTypes) {
+    usedColorCounts[t.color] = (usedColorCounts[t.color] || 0) + 1;
+    usedGlyphCounts[t.glyph] = (usedGlyphCounts[t.glyph] || 0) + 1;
+  }
+
+  // Prefer combos with least-used color and glyph for maximum contrast
+  const minColorUse = Math.min(...available.map(c => usedColorCounts[c.color] || 0));
+  const leastUsedColorCombos = available.filter(c => (usedColorCounts[c.color] || 0) === minColorUse);
+
+  const minGlyphUse = Math.min(...leastUsedColorCombos.map(c => usedGlyphCounts[c.glyph] || 0));
+  const bestCombos = leastUsedColorCombos.filter(c => (usedGlyphCounts[c.glyph] || 0) === minGlyphUse);
+
+  // Random pick from the best candidates
+  return bestCombos[Math.floor(Math.random() * bestCombos.length)];
+}
+
+// Check if we can create more objects
+function canCreateNewObject(existingTypes) {
+  return getNextAvailableCombo(existingTypes) !== null;
+}
 
 // Mutable runtime registry
 let __TYPES = ITEM_TYPES.slice();
@@ -283,4 +394,11 @@ Object.assign(window, {
   getShapeCells,
   rotateCells,
   allPlacementsFit,
+  getNextAvailableCombo,
+  canCreateNewObject,
+  MAX_OBJECT_TYPES,
+  PREDEFINED_COLORS,
+  PREDEFINED_GLYPHS,
+  COLOR_NAMES,
+  GLYPH_NAMES,
 });
