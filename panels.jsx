@@ -1,6 +1,6 @@
 // panels.jsx — left tray + right side panel + topbar widgets + glyph picker
 
-const GLYPH_KINDS = ["hex", "diamond", "tri", "rect", "circle", "pent"];
+const GLYPH_KINDS = ["hex", "diamond", "tri", "rect", "circle", "pent", "star", "cross"];
 
 // ---- Reusable Section (MUST be defined outside components to prevent remount) ----
 function PanelSection({ label, children, theme }) {
