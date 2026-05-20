@@ -46,6 +46,7 @@ function PlacedItem({
   const t = ITEM_BY_ID[p.type];
   const shapeCells = getShapeCells(p);
   const [bw, bh] = getDims(p);
+  const [gx, gy] = pickGlyphCell(shapeCells);
   const left = p.x * (cell + gap);
   const top = p.y * (cell + gap);
   const totalW = bw * cell + (bw - 1) * gap;
@@ -117,17 +118,20 @@ function PlacedItem({
           ></div>
         );
       })}
-      {/* Glyph overlay */}
+      {/* Glyph overlay — positioned in most-central tile of the shape */}
       <div
         style={{
           position: "absolute",
-          inset: 0,
-          padding: Math.min(totalW, totalH) * 0.15,
+          left: gx * (cell + gap),
+          top: gy * (cell + gap),
+          width: cell,
+          height: cell,
+          padding: cell * 0.15,
           opacity: 0.92,
           pointerEvents: "none",
         }}
       >
-        <Glyph kind={t.glyph} style={iconStyle} color={itemColor} w={bw} h={bh} />
+        <Glyph kind={t.glyph} style={iconStyle} color={itemColor} w={1} h={1} />
       </div>
       {/* Score badge — only in graph/lines mode */}
       {showScore && (
@@ -567,6 +571,7 @@ function GridSurface({
           if (!inBounds) return null;
           const cellSet = new Set(ghostCells.map(([x, y]) => `${x},${y}`));
           const has = (x, y) => cellSet.has(`${x},${y}`);
+          const [ggx, ggy] = pickGlyphCell(ghostCells);
           return (
             <div
               style={{
@@ -608,13 +613,16 @@ function GridSurface({
               <div
                 style={{
                   position: "absolute",
-                  inset: 0,
-                  padding: Math.min(gw, gh) * cell * 0.15,
+                  left: ggx * (cell + gap),
+                  top: ggy * (cell + gap),
+                  width: cell,
+                  height: cell,
+                  padding: cell * 0.15,
                   opacity: 0.4,
                   pointerEvents: "none",
                 }}
               >
-                <Glyph kind={t.glyph} style={iconStyle} color={t.color} w={gw} h={gh} />
+                <Glyph kind={t.glyph} style={iconStyle} color={t.color} w={1} h={1} />
               </div>
             </div>
           );
