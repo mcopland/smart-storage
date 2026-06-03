@@ -642,7 +642,9 @@ function GridSurface({
                       borderRadius: `${tl}px ${tr}px ${br}px ${bl}px`,
                       borderRight: has(cx + 1, cy) ? "none" : undefined,
                       borderBottom: has(cx, cy + 1) ? "none" : undefined,
-                      background: ghost.valid ? `${t.color}15` : "rgba(255,80,80,0.05)",
+                      background: ghost.valid
+                        ? `color-mix(in oklab, ${t.color} 12%, transparent)`
+                        : "rgba(255,80,80,0.05)",
                       opacity: 0.7,
                     }}
                   ></div>

@@ -152,7 +152,7 @@ function Tray({
                 boxShadow: isSel
                   ? `0 0 0 1px ${accent}`
                   : highlightedTypeId === tt.id
-                    ? `0 0 10px 3px ${tt.color}44`
+                    ? `0 0 10px 3px color-mix(in oklab, ${tt.color} 27%, transparent)`
                     : "none",
                 borderRadius: 8,
                 background: isSel ? (isWarm ? "rgba(94,234,212,0.08)" : "rgba(94,234,212,0.06)") : cellBg,
@@ -842,9 +842,9 @@ function ScorePanel({
                     gap: 10,
                     alignItems: "center",
                     borderRadius: 4,
-                    padding: "2px 4px",
+                    padding: "5px 4px",
                     margin: "0 -4px",
-                    background: isHl ? `${info.color}15` : "transparent",
+                    background: isHl ? `color-mix(in oklab, ${info.color} 12%, transparent)` : "transparent",
                     transition: "background 120ms",
                     cursor: "default",
                   }}
@@ -855,7 +855,7 @@ function ScorePanel({
                       height: 10,
                       borderRadius: 2,
                       background: info.color,
-                      boxShadow: isHl ? `0 0 8px 2px ${info.color}55` : "none",
+                      boxShadow: isHl ? `0 0 8px 2px color-mix(in oklab, ${info.color} 33%, transparent)` : "none",
                       transition: "box-shadow 160ms",
                     }}
                   />
@@ -1459,7 +1459,9 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
                     height: cellSize,
                     border: `1px solid ${isActive ? assignedCombo?.color : cellBorder}`,
                     borderRadius: 6,
-                    background: isActive ? `${assignedCombo?.color}22` : cellBg,
+                    background: isActive
+                      ? `color-mix(in oklab, ${assignedCombo?.color || "transparent"} 13%, transparent)`
+                      : cellBg,
                     cursor: "pointer",
                     transition: "all 140ms ease",
                     position: "relative",
@@ -1467,7 +1469,7 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
                   onPointerEnter={e => {
                     if (!isActive && assignedCombo) {
                       e.currentTarget.style.borderColor = assignedCombo.color;
-                      e.currentTarget.style.background = `${assignedCombo.color}12`;
+                      e.currentTarget.style.background = `color-mix(in oklab, ${assignedCombo.color} 7%, transparent)`;
                     }
                   }}
                   onPointerLeave={e => {
@@ -1842,7 +1844,7 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
                   height: cellSize,
                   border: `1px solid ${isActive ? itemType.color : cellBorder}`,
                   borderRadius: 6,
-                  background: isActive ? `${itemType.color}22` : cellBg,
+                  background: isActive ? `color-mix(in oklab, ${itemType.color} 13%, transparent)` : cellBg,
                   cursor: "pointer",
                   transition: "all 140ms ease",
                   position: "relative",
@@ -1850,7 +1852,7 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
                 onPointerEnter={e => {
                   if (!isActive) {
                     e.currentTarget.style.borderColor = itemType.color;
-                    e.currentTarget.style.background = `${itemType.color}12`;
+                    e.currentTarget.style.background = `color-mix(in oklab, ${itemType.color} 7%, transparent)`;
                   }
                 }}
                 onPointerLeave={e => {
