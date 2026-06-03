@@ -25,6 +25,22 @@ function PanelSection({ label, children, theme }) {
   );
 }
 
+// ---- Tray metrics — single source of truth for inventory sizing ----
+// Panel width is DERIVED from the tile content (size, gap, column count, padding,
+// and the reserved scrollbar gutter) so it always hugs the columns exactly,
+// regardless of how the tiles are styled. No magic width constants.
+function trayMetrics(isRail) {
+  const tileSize = isRail ? 68 : 76;
+  const gap = isRail ? 6 : 8;
+  const cols = isRail ? 1 : 2;
+  const padL = isRail ? 10 : 16;
+  const padR = isRail ? 2 : 8;
+  const gutter = 8; // scrollbar-gutter: stable keeps width constant whether or not it scrolls
+  const width = padL + cols * tileSize + (cols - 1) * gap + padR + gutter;
+  return { tileSize, gap, cols, padL, padR, gutter, width, padCss: `14px ${padR}px 14px ${padL}px` };
+}
+window.trayMetrics = trayMetrics;
+
 // ---- Tray (drawer / rail) ----
 function Tray({
   inventory,
@@ -43,7 +59,8 @@ function Tray({
   const isRail = layout === "rail";
   const cellBorder = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.08)";
   const cellBg = isWarm ? "rgba(255,253,247,0.5)" : "rgba(255,255,255,0.02)";
-  const tileSize = isRail ? 68 : 76;
+  const m = trayMetrics(isRail);
+  const { tileSize, gap, cols } = m;
   const accent = "oklch(0.78 0.12 195)";
 
   const dragRef = React.useRef(null);
@@ -81,19 +98,21 @@ function Tray({
       <div
         style={{
           flex: 1,
-          overflow: "auto",
-          display: "flex",
-          flexDirection: isRail ? "column" : "row",
-          gap: isRail ? 6 : 8,
-          flexWrap: isRail ? "nowrap" : "wrap",
-          padding: isRail ? "14px 10px" : "14px 16px",
+          overflowY: "auto",
+          overflowX: "hidden",
+          scrollbarGutter: "stable",
+          display: "grid",
+          gridTemplateColumns: `repeat(${cols}, ${tileSize}px)`,
+          gap: gap,
+          justifyContent: "start",
           alignContent: "flex-start",
+          padding: m.padCss,
         }}
       >
         {!isRail && (
           <div
             style={{
-              width: "100%",
+              gridColumn: "1 / -1",
               font: '500 10px/1 "JetBrains Mono", monospace',
               letterSpacing: "0.18em",
               textTransform: "uppercase",
