@@ -248,7 +248,7 @@ function useTweaks(defaults) {
 }
 
 const TWEAK_DEFAULTS = {
-  "theme": "dark",
+  "theme": "mono",
   "vizMode": "edges",
   "zoom": 100,
   "iconStyle": "solid",
@@ -739,6 +739,7 @@ function App() {
                 vizMode={t.vizMode}
                 theme={t.theme}
                 iconStyle={t.iconStyle}
+                highlightStyle="dim"
                 scoreData={scoreData}
                 draggingFromTray={draggingFromTray}
                 setDraggingFromTray={setDraggingFromTray}
