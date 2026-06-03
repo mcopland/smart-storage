@@ -297,6 +297,17 @@ function GridSurface({
   const [marquee, setMarquee] = useState(null);
   const [ghost, setGhost] = useState(null);
 
+  // Re-evaluate the ghost when the tray-drag rotation changes (rotate via "R" while dragging)
+  useEffect(() => {
+    if (!draggingFromTray) return;
+    setGhost(g => {
+      if (!g) return g;
+      const candidate = { id: "__ghost", type: draggingFromTray.type, x: g.x, y: g.y, rot: draggingFromTray.rot ?? 0 };
+      const valid = fits(candidate, placements, gridW, gridH, "__ghost", disabledCells);
+      return { ...candidate, valid };
+    });
+  }, [draggingFromTray, placements, gridW, gridH, disabledCells]);
+
   const isWarm = theme === "warm";
   const totalW = gridW * cell + (gridW - 1) * gap;
   const totalH = gridH * cell + (gridH - 1) * gap;

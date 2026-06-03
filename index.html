@@ -474,17 +474,23 @@ function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.key === 'r' || e.key === 'R') {e.preventDefault();rotateSelection();} else
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        if (draggingFromTray) {
+          setDraggingFromTray((d) => d ? { ...d, rot: ((d.rot ?? 0) + 90) % 360 } : d);
+        } else {
+          rotateSelection();
+        }
+      } else
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (selectedTypeId) { setDeleteTypeTarget(selectedTypeId); }
         else { deleteSelection(); }
-      } else
-      if (e.key === 'Escape') {setSelectedIds([]);setSelectedTypeId(null);}
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [rotateSelection, deleteSelection]);
+  }, [rotateSelection, deleteSelection, draggingFromTray, selectedTypeId]);
 
   const onTrayDragStart = (e, type) => {
     e.preventDefault();
