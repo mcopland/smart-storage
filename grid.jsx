@@ -522,6 +522,7 @@ function GridSurface({
   return (
     <div
       ref={surfaceRef}
+      data-grid-surface=""
       onPointerDown={onSurfacePointerDown}
       onPointerMove={onSurfacePointerMove}
       onPointerUp={onSurfacePointerUp}

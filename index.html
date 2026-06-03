@@ -396,6 +396,20 @@ function App() {
     return () => {clearTimeout(timer);document.removeEventListener('click', onClick);};
   }, [selectedTypeId]);
 
+  // Global click handler: deselect workspace placements when clicking off the grid.
+  // Mirrors the inventory behaviour — click anywhere outside the grid (or the editor
+  // panel that lets you edit the selection) to deselect.
+  useEffect(() => {
+    if (selectedIds.length === 0) return;
+    const onClick = (e) => {
+      if (e.target.closest('[data-grid-surface]')) return;
+      if (e.target.closest('[data-score-panel]')) return;
+      setSelectedIds([]);
+    };
+    const timer = setTimeout(() => document.addEventListener('click', onClick), 0);
+    return () => {clearTimeout(timer);document.removeEventListener('click', onClick);};
+  }, [selectedIds]);
+
   // Safe grid resize — prevents shrinking if any placement would be removed
   const onSafeResizeW = useCallback((newW) => {
     const w = Math.max(2, Math.min(20, newW));
