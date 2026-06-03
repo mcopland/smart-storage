@@ -529,6 +529,34 @@ function App() {
 
   const onAddNew = () => setNewTypeOpen(true);
 
+  // Place every remaining inventory item onto the first free spot it fits.
+  const onPlaceAll = useCallback(() => {
+    setSelectedIds([]); setSelectedTypeId(null);
+    const placed = [...placements];
+    const newInv = { ...inventory };
+    let n = 0;
+    for (const tt of itemTypes) {
+      let count = Math.max(0, newInv[tt.id] ?? 0);
+      while (count > 0) {
+        let chosen = null;
+        outer: for (let y = 0; y < gridH; y++) {
+          for (let x = 0; x < gridW; x++) {
+            for (const rot of [0, 90, 180, 270]) {
+              const tryP = { id: 'pa' + Date.now() + '_' + n++, type: tt.id, x, y, rot };
+              if (fits(tryP, placed, gridW, gridH, tryP.id, disabledCells)) { chosen = tryP; break outer; }
+            }
+          }
+        }
+        if (!chosen) break; // no room left for this type
+        placed.push(chosen);
+        count -= 1;
+      }
+      newInv[tt.id] = count;
+    }
+    setPlacements(placed);
+    setInventory(newInv);
+  }, [placements, inventory, itemTypes, gridW, gridH, disabledCells]);
+
   const fileInputRef = useRef(null);
   const onImport = () => fileInputRef.current?.click();
   const onImportFile = (e) => {
@@ -612,7 +640,8 @@ function App() {
   const border = isWarm ? 'rgba(60,50,40,0.1)' : 'rgba(255,255,255,0.06)';
 
   const isRail = t.trayLayout === 'rail';
-  const trayWidth = isRail ? 88 : 240;
+  // Panel width is derived from the inventory tile metrics (see trayMetrics) — not a fixed number.
+  const trayWidth = trayMetrics(isRail).width;
 
   const sectionLabel = {
     font: '500 10px/1 "JetBrains Mono", monospace',
@@ -673,6 +702,7 @@ function App() {
             onSelectType={onSelectTrayType}
             onStartDrag={onTrayDragStart}
             onAddNew={onAddNew}
+            onPlaceAll={onPlaceAll}
             theme={t.theme}
             iconStyle={t.iconStyle}
             layout={t.trayLayout}
