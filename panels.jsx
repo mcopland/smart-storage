@@ -800,7 +800,7 @@ function ScorePanel({
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-        <div style={{ padding: "22px 18px 18px", borderBottom: `1px solid ${border}` }}>
+        <div style={{ padding: "14px 18px 18px", borderBottom: `1px solid ${border}` }}>
           <div
             style={{
               font: '500 10px/1 "JetBrains Mono", monospace',
@@ -823,12 +823,16 @@ function ScorePanel({
             {total}
           </div>
           <div style={{ marginTop: 8, font: "12px/1.5 Inter, sans-serif", color: fgDim }}>
-            {placements.length} items • {findClusters(placements).length} clusters
+            {placements.length} {placements.length === 1 ? "item" : "items"} •{" "}
+            {(() => {
+              const c = findClusters(placements).length;
+              return `${c} ${c === 1 ? "cluster" : "clusters"}`;
+            })()}
           </div>
         </div>
 
         <PanelSection label="Composition" theme={theme}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {Object.entries(perType).map(([id, info]) => {
               const isHl = highlightedTypeId === id;
               return (
@@ -1309,7 +1313,7 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
 
   const [name, setName] = React.useState("");
   const [base, setBase] = React.useState(5);
-  const [count, setCount] = React.useState(3);
+  const [count, setCount] = React.useState(1);
   const [assignedCombo, setAssignedCombo] = React.useState(null);
   const [cells, setCells] = React.useState([]);
 
@@ -1324,7 +1328,7 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
       setCells(combo.cells);
       setName(getComboName(combo));
       setBase(5);
-      setCount(3);
+      setCount(1);
     }
   }, [open, onClose]);
 
