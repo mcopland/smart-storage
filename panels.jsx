@@ -1863,14 +1863,6 @@ function ShortcutsRow({ theme }) {
   const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
   const Plus = () => <span style={{ margin: "0 4px", color: fgDim, font: "11px/1 Inter, sans-serif" }}>+</span>;
   const items = [
-    {
-      keys: (
-        <KeyIcon theme={theme} wide>
-          drag
-        </KeyIcon>
-      ),
-      label: "place",
-    },
     { keys: <KeyIcon theme={theme}>R</KeyIcon>, label: "rotate" },
     {
       keys: (
@@ -1908,20 +1900,12 @@ function ShortcutsRow({ theme }) {
       ),
       label: "remove",
     },
-    {
-      keys: (
-        <KeyIcon theme={theme} wide>
-          Esc
-        </KeyIcon>
-      ),
-      label: "deselect",
-    },
   ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 14, alignItems: "center" }}>
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
-        {items.slice(0, 3).map((it, i) => (
+        {items.slice(0, 2).map((it, i) => (
           <div
             key={i}
             style={{
@@ -1938,7 +1922,7 @@ function ShortcutsRow({ theme }) {
         ))}
       </div>
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
-        {items.slice(3).map((it, i) => (
+        {items.slice(2).map((it, i) => (
           <div
             key={i}
             style={{
