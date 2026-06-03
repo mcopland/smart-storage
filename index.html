@@ -115,10 +115,18 @@ function PannableContainer({ children, zoom, theme }) {
   // Track spacebar key state
   useEffect(() => {
     const onKeyDown = (e) => {
-      if (e.code === 'Space' && !e.repeat && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-        e.preventDefault();
-        setSpaceHeld(true);
-      }
+      if (e.code !== 'Space' || e.repeat) return;
+      const el = e.target;
+      const tag = el.tagName;
+      const type = (el.type || '').toLowerCase();
+      const isTextField = tag === 'TEXTAREA' ||
+        (tag === 'INPUT' && ['text', 'number', 'search', 'email', 'url', 'password', 'tel'].includes(type));
+      if (isTextField) return;
+      e.preventDefault();
+      // Focus may be sitting on a control like the zoom slider — blur it so Space-to-pan
+      // engages immediately instead of being swallowed by the focused input.
+      if (tag === 'INPUT' || tag === 'BUTTON') el.blur();
+      setSpaceHeld(true);
     };
     const onKeyUp = (e) => {
       if (e.code === 'Space') {
@@ -184,6 +192,7 @@ function PannableContainer({ children, zoom, theme }) {
         overflow: 'hidden',
         cursor: getCursor(),
         position: 'relative',
+        zIndex: 0,
       }}
     >
       <div
@@ -396,6 +405,20 @@ function App() {
     return () => {clearTimeout(timer);document.removeEventListener('click', onClick);};
   }, [selectedTypeId]);
 
+  // Global click handler: deselect workspace placements when clicking off the grid.
+  // Mirrors the inventory behaviour — click anywhere outside the grid (or the editor
+  // panel that lets you edit the selection) to deselect.
+  useEffect(() => {
+    if (selectedIds.length === 0) return;
+    const onClick = (e) => {
+      if (e.target.closest('[data-grid-surface]')) return;
+      if (e.target.closest('[data-score-panel]')) return;
+      setSelectedIds([]);
+    };
+    const timer = setTimeout(() => document.addEventListener('click', onClick), 0);
+    return () => {clearTimeout(timer);document.removeEventListener('click', onClick);};
+  }, [selectedIds]);
+
   // Safe grid resize — prevents shrinking if any placement would be removed
   const onSafeResizeW = useCallback((newW) => {
     const w = Math.max(2, Math.min(20, newW));
@@ -474,17 +497,23 @@ function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.key === 'r' || e.key === 'R') {e.preventDefault();rotateSelection();} else
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        if (draggingFromTray) {
+          setDraggingFromTray((d) => d ? { ...d, rot: ((d.rot ?? 0) + 90) % 360 } : d);
+        } else {
+          rotateSelection();
+        }
+      } else
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (selectedTypeId) { setDeleteTypeTarget(selectedTypeId); }
         else { deleteSelection(); }
-      } else
-      if (e.key === 'Escape') {setSelectedIds([]);setSelectedTypeId(null);}
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [rotateSelection, deleteSelection]);
+  }, [rotateSelection, deleteSelection, draggingFromTray, selectedTypeId]);
 
   const onTrayDragStart = (e, type) => {
     e.preventDefault();
@@ -658,17 +687,10 @@ function App() {
           display: 'flex', flexDirection: 'column',
           padding: '14px 32px 32px', background: bg, minWidth: 0
         }}>
-          {/* Workspace header + controls */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-            <div style={sectionLabel}>Workspace</div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <GridSizeControls gridW={gridW} gridH={gridH}
-              onChangeW={onSafeResizeW} onChangeH={onSafeResizeH} theme={t.theme} />
-              <ZoomSlider value={zoom} onChange={(v) => setTweak('zoom', v)} theme={t.theme} />
-            </div>
-          </div>
+          {/* Workspace label */}
+          <div style={{ ...sectionLabel, marginBottom: 12, flexShrink: 0, position: 'relative', zIndex: 2 }}>Workspace</div>
 
-          {/* Grid card */}
+          {/* Grid card — furthest-back layer */}
           <PannableContainer zoom={zoom} theme={t.theme}>
             <div style={{
               position: 'relative', padding: wsPad,
@@ -698,11 +720,22 @@ function App() {
             </div>
           </PannableContainer>
 
-          <ShortcutsRow theme={t.theme} />
+          {/* Bottom controls — grid resize, zoom, shortcuts (layered above the grid) */}
+          <div style={{
+            flexShrink: 0, position: 'relative', zIndex: 2,
+            marginTop: 12, background: bg
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <GridSizeControls gridW={gridW} gridH={gridH}
+              onChangeW={onSafeResizeW} onChangeH={onSafeResizeH} theme={t.theme} />
+              <ZoomSlider value={zoom} onChange={(v) => setTweak('zoom', v)} theme={t.theme} />
+            </div>
+            <ShortcutsRow theme={t.theme} />
+          </div>
         </section>
 
         {/* Right panel */}
-        <aside style={{
+        <aside data-score-panel="" style={{
           borderLeft: `1px solid ${border}`, background: surfaceSubtle,
           minHeight: 0, display: 'flex', flexDirection: 'column'
         }}>
