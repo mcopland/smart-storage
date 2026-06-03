@@ -49,6 +49,7 @@ function Tray({
   onSelectType,
   onStartDrag,
   onAddNew,
+  onPlaceAll,
   theme,
   iconStyle,
   layout,
@@ -266,6 +267,53 @@ function Tray({
           </div>
         )}
       </div>
+
+      {onPlaceAll &&
+        (() => {
+          const remaining = itemTypes.reduce((s, tt) => s + Math.max(0, inventory[tt.id] ?? 0), 0);
+          const disabled = remaining <= 0;
+          const fBorder = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.07)";
+          return (
+            <div
+              style={{
+                flexShrink: 0,
+                padding: isRail ? "10px 8px" : "12px 16px",
+                borderTop: `1px solid ${fBorder}`,
+              }}
+            >
+              <button
+                onClick={onPlaceAll}
+                disabled={disabled}
+                title={disabled ? "Inventory is empty" : "Place all inventory items onto the workspace"}
+                style={{
+                  width: "100%",
+                  padding: isRail ? "8px 4px" : "9px 12px",
+                  background: disabled ? "transparent" : isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)",
+                  border: `1px solid ${disabled ? fBorder : accent}`,
+                  borderRadius: 6,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  color: disabled ? (isWarm ? "rgba(60,50,40,0.3)" : "rgba(255,255,255,0.25)") : accent,
+                  font: isRail ? '500 9px/1.2 "JetBrains Mono", monospace' : "500 12px/1 Inter, sans-serif",
+                  letterSpacing: isRail ? "0.04em" : "0.01em",
+                  transition: "background 120ms, border-color 120ms",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                onPointerEnter={e => {
+                  if (!disabled)
+                    e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.18)" : "rgba(94,234,212,0.14)";
+                }}
+                onPointerLeave={e => {
+                  if (!disabled)
+                    e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)";
+                }}
+              >
+                {isRail ? "Place" : `Place all${remaining > 0 ? ` (${remaining})` : ""}`}
+              </button>
+            </div>
+          );
+        })()}
     </div>
   );
 }
