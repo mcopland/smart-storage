@@ -42,6 +42,8 @@ function PlacedItem({
   theme,
   iconStyle,
   highlighted,
+  highlightStyle = "halo",
+  focusActive = false,
 }) {
   const t = ITEM_BY_ID[p.type];
   const shapeCells = getShapeCells(p);
@@ -54,19 +56,35 @@ function PlacedItem({
 
   const itemColor = t.color;
   const isWarm = theme === "warm";
-  const surface = isWarm ? "rgba(255,250,240,0.85)" : "rgba(20,26,34,0.82)";
-  const borderCol = selected ? itemColor : isWarm ? "rgba(60,50,40,0.22)" : "rgba(255,255,255,0.12)";
+  // Fill each shape with a light shade of its own color so types are easy to tell
+  // apart; outline with the full assigned color.
+  const surface = isWarm
+    ? `color-mix(in oklab, ${itemColor} 24%, #ffffff)`
+    : `color-mix(in oklab, ${itemColor} 30%, #0e1116)`;
+  const borderCol = itemColor;
+
+  const isFocused = selected || highlighted;
+  // translucent shade of the item color, valid for oklch() inputs
+  const glow = pct => `color-mix(in oklab, ${itemColor} ${pct}%, transparent)`;
 
   const showScore = vizMode === "lines" && score != null;
 
   const cellSet = new Set(shapeCells.map(([x, y]) => `${x},${y}`));
   const has = (x, y) => cellSet.has(`${x},${y}`);
 
-  // Use filter: drop-shadow for non-rectangular glow
+  // Two highlight strategies (Tweak: highlightStyle)
+  //  • halo — focused object gets a light ring of its own color
+  //  • dim  — focused object is untouched; every other object dims back
   const filters = [];
-  if (selected) filters.push(`drop-shadow(0 0 4px ${itemColor}) drop-shadow(0 2px 8px ${itemColor}55)`);
-  if (highlighted && !selected)
-    filters.push(`drop-shadow(0 0 6px ${itemColor}77) drop-shadow(0 0 12px ${itemColor}33)`);
+  let itemOpacity = 1;
+  // Strong halo on the focused object — applies in both modes.
+  if (selected) filters.push(`drop-shadow(0 0 3px ${glow(95)}) drop-shadow(0 0 8px ${glow(55)})`);
+  else if (highlighted) filters.push(`drop-shadow(0 0 4px ${glow(75)}) drop-shadow(0 0 10px ${glow(35)})`);
+  // In dim mode, also push the non-focused objects back — but only gently,
+  // just enough to make the highlighted shapes read forward without fading out.
+  if (highlightStyle === "dim" && focusActive && !isFocused) {
+    itemOpacity = 0.42;
+  }
 
   const r = Math.max(4, Math.min(8, cell * 0.16));
 
@@ -86,7 +104,8 @@ function PlacedItem({
         userSelect: "none",
         touchAction: "none",
         filter: filters.length ? filters.join(" ") : "none",
-        transition: "filter 160ms ease",
+        opacity: itemOpacity,
+        transition: "filter 160ms ease, opacity 160ms ease",
       }}
     >
       {/* Cell backgrounds */}
@@ -291,6 +310,7 @@ function GridSurface({
   toggleDisabledCell,
   highlightedTypeId,
   onHoverTypeId,
+  highlightStyle,
 }) {
   const surfaceRef = useRef(null);
   const dragState = useRef(null);
@@ -309,6 +329,8 @@ function GridSurface({
   }, [draggingFromTray, placements, gridW, gridH, disabledCells]);
 
   const isWarm = theme === "warm";
+  // A "focus" is active when something is selected or an inventory type is hovered.
+  const focusActive = selectedIds.length > 0 || highlightedTypeId != null;
   const totalW = gridW * cell + (gridW - 1) * gap;
   const totalH = gridH * cell + (gridH - 1) * gap;
 
@@ -557,6 +579,8 @@ function GridSurface({
           theme={theme}
           iconStyle={iconStyle}
           highlighted={highlightedTypeId === p.type}
+          highlightStyle={highlightStyle}
+          focusActive={focusActive}
         />
       ))}
 

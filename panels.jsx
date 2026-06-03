@@ -1230,6 +1230,23 @@ const GraphIcon = () => (
   </svg>
 );
 
+// Highlight-style icons: a ringed shape (halo) vs. one solid shape among faded ones (dim)
+const HaloIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+    <rect x="4.5" y="4.5" width="7" height="7" rx="1.4" fill="currentColor" />
+    <rect x="1.8" y="1.8" width="12.4" height="12.4" rx="3" stroke="currentColor" strokeWidth="1.2" opacity="0.5" />
+  </svg>
+);
+
+const DimIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+    <rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor" />
+    <rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor" opacity="0.25" />
+    <rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" opacity="0.25" />
+    <rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" opacity="0.25" />
+  </svg>
+);
+
 function InlineTweaks({ t, setTweak, theme }) {
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
