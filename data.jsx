@@ -4,11 +4,11 @@
 const PREDEFINED_COLORS = [
   "oklch(0.78 0.12 195)", // teal
   "oklch(0.82 0.10 240)", // blue
-  "oklch(0.85 0.11 95)", // lime
+  "oklch(0.86 0.16 110)", // lime
   "oklch(0.78 0.13 25)", // red-orange
   "oklch(0.83 0.10 305)", // violet
-  "oklch(0.84 0.07 165)", // sage
-  "oklch(0.76 0.14 160)", // green
+  "oklch(0.80 0.05 165)", // sage
+  "oklch(0.72 0.17 145)", // green
   "oklch(0.80 0.12 45)", // amber
 ];
 
@@ -72,7 +72,7 @@ const ITEM_TYPES = [
     id: "conduit",
     name: "Conduit",
     glyph: "tri",
-    color: "oklch(0.85 0.11 95)",
+    color: "oklch(0.86 0.16 110)",
     base: 6,
     desc: "L-shaped link. Pairs well with relays.",
     synergy: { relay: 4, capacitor: 2 },
@@ -111,7 +111,7 @@ const ITEM_TYPES = [
     id: "shield",
     name: "Shield",
     glyph: "pent",
-    color: "oklch(0.84 0.07 165)",
+    color: "oklch(0.80 0.05 165)",
     base: 9,
     desc: "Defensive L-shape. Boosts capacitors and cores.",
     synergy: { capacitor: 4, core: 3 },
@@ -127,11 +127,11 @@ const ITEM_TYPES = [
 const COLOR_NAMES = {
   "oklch(0.78 0.12 195)": "Teal",
   "oklch(0.82 0.10 240)": "Blue",
-  "oklch(0.85 0.11 95)": "Lime",
+  "oklch(0.86 0.16 110)": "Lime",
   "oklch(0.78 0.13 25)": "Red",
   "oklch(0.83 0.10 305)": "Violet",
-  "oklch(0.84 0.07 165)": "Sage",
-  "oklch(0.76 0.14 160)": "Green",
+  "oklch(0.80 0.05 165)": "Sage",
+  "oklch(0.72 0.17 145)": "Green",
   "oklch(0.80 0.12 45)": "Amber",
 };
 
@@ -139,7 +139,7 @@ const GLYPH_NAMES = {
   hex: "Hex",
   diamond: "Diamond",
   tri: "Triangle",
-  rect: "Rect",
+  rect: "Rectangle",
   circle: "Circle",
   pent: "Pentagon",
   star: "Star",

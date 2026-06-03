@@ -152,7 +152,7 @@ function Tray({
                 boxShadow: isSel
                   ? `0 0 0 1px ${accent}`
                   : highlightedTypeId === tt.id
-                    ? `0 0 10px 3px ${tt.color}44`
+                    ? `0 0 10px 3px color-mix(in oklab, ${tt.color} 27%, transparent)`
                     : "none",
                 borderRadius: 8,
                 background: isSel ? (isWarm ? "rgba(94,234,212,0.08)" : "rgba(94,234,212,0.06)") : cellBg,
@@ -800,7 +800,7 @@ function ScorePanel({
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-        <div style={{ padding: "22px 18px 18px", borderBottom: `1px solid ${border}` }}>
+        <div style={{ padding: "14px 18px 18px", borderBottom: `1px solid ${border}` }}>
           <div
             style={{
               font: '500 10px/1 "JetBrains Mono", monospace',
@@ -823,12 +823,16 @@ function ScorePanel({
             {total}
           </div>
           <div style={{ marginTop: 8, font: "12px/1.5 Inter, sans-serif", color: fgDim }}>
-            {placements.length} items • {findClusters(placements).length} clusters
+            {placements.length} {placements.length === 1 ? "item" : "items"} •{" "}
+            {(() => {
+              const c = findClusters(placements).length;
+              return `${c} ${c === 1 ? "cluster" : "clusters"}`;
+            })()}
           </div>
         </div>
 
         <PanelSection label="Composition" theme={theme}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {Object.entries(perType).map(([id, info]) => {
               const isHl = highlightedTypeId === id;
               return (
@@ -842,9 +846,9 @@ function ScorePanel({
                     gap: 10,
                     alignItems: "center",
                     borderRadius: 4,
-                    padding: "2px 4px",
+                    padding: "5px 4px",
                     margin: "0 -4px",
-                    background: isHl ? `${info.color}15` : "transparent",
+                    background: isHl ? `color-mix(in oklab, ${info.color} 12%, transparent)` : "transparent",
                     transition: "background 120ms",
                     cursor: "default",
                   }}
@@ -855,7 +859,7 @@ function ScorePanel({
                       height: 10,
                       borderRadius: 2,
                       background: info.color,
-                      boxShadow: isHl ? `0 0 8px 2px ${info.color}55` : "none",
+                      boxShadow: isHl ? `0 0 8px 2px color-mix(in oklab, ${info.color} 33%, transparent)` : "none",
                       transition: "box-shadow 160ms",
                     }}
                   />
@@ -1309,7 +1313,7 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
 
   const [name, setName] = React.useState("");
   const [base, setBase] = React.useState(5);
-  const [count, setCount] = React.useState(3);
+  const [count, setCount] = React.useState(1);
   const [assignedCombo, setAssignedCombo] = React.useState(null);
   const [cells, setCells] = React.useState([]);
 
@@ -1324,7 +1328,7 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
       setCells(combo.cells);
       setName(getComboName(combo));
       setBase(5);
-      setCount(3);
+      setCount(1);
     }
   }, [open, onClose]);
 
@@ -1459,7 +1463,9 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
                     height: cellSize,
                     border: `1px solid ${isActive ? assignedCombo?.color : cellBorder}`,
                     borderRadius: 6,
-                    background: isActive ? `${assignedCombo?.color}22` : cellBg,
+                    background: isActive
+                      ? `color-mix(in oklab, ${assignedCombo?.color || "transparent"} 13%, transparent)`
+                      : cellBg,
                     cursor: "pointer",
                     transition: "all 140ms ease",
                     position: "relative",
@@ -1467,7 +1473,7 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
                   onPointerEnter={e => {
                     if (!isActive && assignedCombo) {
                       e.currentTarget.style.borderColor = assignedCombo.color;
-                      e.currentTarget.style.background = `${assignedCombo.color}12`;
+                      e.currentTarget.style.background = `color-mix(in oklab, ${assignedCombo.color} 7%, transparent)`;
                     }
                   }}
                   onPointerLeave={e => {
@@ -1842,7 +1848,7 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
                   height: cellSize,
                   border: `1px solid ${isActive ? itemType.color : cellBorder}`,
                   borderRadius: 6,
-                  background: isActive ? `${itemType.color}22` : cellBg,
+                  background: isActive ? `color-mix(in oklab, ${itemType.color} 13%, transparent)` : cellBg,
                   cursor: "pointer",
                   transition: "all 140ms ease",
                   position: "relative",
@@ -1850,7 +1856,7 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
                 onPointerEnter={e => {
                   if (!isActive) {
                     e.currentTarget.style.borderColor = itemType.color;
-                    e.currentTarget.style.background = `${itemType.color}12`;
+                    e.currentTarget.style.background = `color-mix(in oklab, ${itemType.color} 7%, transparent)`;
                   }
                 }}
                 onPointerLeave={e => {
