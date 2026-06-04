@@ -28,6 +28,132 @@ function pickGlyphCell(shapeCells) {
   return best;
 }
 
+// Centered box for a shape's glyph within its cell, accounting for the gap-fill
+// that visually merges this cell with its in-shape neighbours. The tile background
+// bleeds half a gap into each neighbouring side, so the glyph must be centered on
+// the cell expanded by gap/2 on every side that has a neighbour — otherwise it
+// reads as pushed toward the open corner. Returns coords relative to the
+// placement origin. Line connectors anchor to this same box center so they line up.
+function glyphBox(gx, gy, has, cell, gap) {
+  const l = has(gx - 1, gy) ? gap / 2 : 0;
+  const r = has(gx + 1, gy) ? gap / 2 : 0;
+  const t = has(gx, gy - 1) ? gap / 2 : 0;
+  const b = has(gx, gy + 1) ? gap / 2 : 0;
+  return {
+    left: gx * (cell + gap) - l,
+    top: gy * (cell + gap) - t,
+    width: cell + l + r,
+    height: cell + t + b,
+  };
+}
+
+// Build the filled region of a polyomino as a union of axis-aligned rectangles:
+// each cell square, plus cell-aligned bridges into the gap toward in-shape
+// neighbours (and the inner corner when a 2x2 block is solid). Bridges are exactly
+// cell-width/height so the union has a clean rectilinear boundary with no diagonal
+// nubs poking into concave corners.
+function shapeRegionRects(cells, cell, gap) {
+  const p = cell + gap;
+  const set = new Set(cells.map(c => c[0] + "," + c[1]));
+  const has = (x, y) => set.has(x + "," + y);
+  const rects = [];
+  for (const [x, y] of cells) {
+    rects.push([x * p, y * p, x * p + cell, y * p + cell]);
+    if (has(x + 1, y)) rects.push([x * p + cell, y * p, x * p + cell + gap, y * p + cell]);
+    if (has(x, y + 1)) rects.push([x * p, y * p + cell, x * p + cell, y * p + cell + gap]);
+    if (has(x + 1, y) && has(x, y + 1) && has(x + 1, y + 1))
+      rects.push([x * p + cell, y * p + cell, x * p + cell + gap, y * p + cell + gap]);
+  }
+  return rects;
+}
+
+// Trace the outer boundary loops of a union of rectangles via a coordinate lattice
+// + marching. Returns an array of loops, each an array of {x,y} vertices.
+function unionContours(rects) {
+  if (rects.length === 0) return [];
+  const xs = [...new Set(rects.flatMap(r => [r[0], r[2]]))].sort((a, b) => a - b);
+  const ys = [...new Set(rects.flatMap(r => [r[1], r[3]]))].sort((a, b) => a - b);
+  const nx = xs.length - 1,
+    ny = ys.length - 1;
+  const inside = (i, j) => {
+    if (i < 0 || j < 0 || i >= nx || j >= ny) return false;
+    const cx = (xs[i] + xs[i + 1]) / 2,
+      cy = (ys[j] + ys[j + 1]) / 2;
+    return rects.some(r => cx > r[0] && cx < r[2] && cy > r[1] && cy < r[3]);
+  };
+  const key = pt => pt[0] + "," + pt[1];
+  const startMap = new Map();
+  const pushEdge = (a, b) => {
+    startMap.set(key(a), { a, b, used: false });
+  };
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      if (!inside(i, j)) continue;
+      const x0 = xs[i],
+        x1 = xs[i + 1],
+        y0 = ys[j],
+        y1 = ys[j + 1];
+      if (!inside(i, j - 1)) pushEdge([x1, y0], [x0, y0]); // top  (interior below)
+      if (!inside(i, j + 1)) pushEdge([x0, y1], [x1, y1]); // bottom
+      if (!inside(i - 1, j)) pushEdge([x0, y0], [x0, y1]); // left
+      if (!inside(i + 1, j)) pushEdge([x1, y1], [x1, y0]); // right
+    }
+  }
+  const loops = [];
+  for (const seed of startMap.values()) {
+    if (seed.used) continue;
+    const loop = [];
+    let cur = seed;
+    while (cur && !cur.used) {
+      cur.used = true;
+      loop.push({ x: cur.a[0], y: cur.a[1] });
+      cur = startMap.get(key(cur.b));
+    }
+    // collapse collinear vertices
+    const simplified = [];
+    for (let k = 0; k < loop.length; k++) {
+      const a = loop[(k - 1 + loop.length) % loop.length];
+      const b = loop[k];
+      const c = loop[(k + 1) % loop.length];
+      const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      if (Math.abs(cross) > 1e-6) simplified.push(b);
+    }
+    if (simplified.length >= 3) loops.push(simplified);
+  }
+  return loops;
+}
+
+// Rounded SVG path for a polygon (rounds every corner, convex and concave).
+function roundedLoopPath(pts, r) {
+  const n = pts.length;
+  if (n < 3) return "";
+  let d = "";
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n],
+      p1 = pts[i],
+      p2 = pts[(i + 1) % n];
+    const v1x = p0.x - p1.x,
+      v1y = p0.y - p1.y;
+    const v2x = p2.x - p1.x,
+      v2y = p2.y - p1.y;
+    const l1 = Math.hypot(v1x, v1y),
+      l2 = Math.hypot(v2x, v2y);
+    const rr = Math.min(r, l1 / 2, l2 / 2);
+    const ax = p1.x + (v1x / l1) * rr,
+      ay = p1.y + (v1y / l1) * rr;
+    const bx = p1.x + (v2x / l2) * rr,
+      by = p1.y + (v2y / l2) * rr;
+    d += (i === 0 ? `M ${ax} ${ay} ` : `L ${ax} ${ay} `) + `Q ${p1.x} ${p1.y} ${bx} ${by} `;
+  }
+  return d + "Z";
+}
+
+function shapeOutlinePath(cells, cell, gap, radius) {
+  return unionContours(shapeRegionRects(cells, cell, gap))
+    .map(loop => roundedLoopPath(loop, radius))
+    .join(" ");
+}
+
 // ---------- placed item rendered on grid (cell-by-cell for complex shapes) ----------
 function PlacedItem({
   p,
@@ -108,50 +234,40 @@ function PlacedItem({
         transition: "filter 160ms ease, opacity 160ms ease",
       }}
     >
-      {/* Cell backgrounds */}
-      {shapeCells.map(([cx, cy]) => {
-        const cLeft = cx * (cell + gap);
-        const cTop = cy * (cell + gap);
-        const cW = cell + (has(cx + 1, cy) ? gap : 0);
-        const cH = cell + (has(cx, cy + 1) ? gap : 0);
-        const tl = !has(cx - 1, cy) && !has(cx, cy - 1) ? r : 0;
-        const tr = !has(cx + 1, cy) && !has(cx, cy - 1) ? r : 0;
-        const br = !has(cx + 1, cy) && !has(cx, cy + 1) ? r : 0;
-        const bl = !has(cx - 1, cy) && !has(cx, cy + 1) ? r : 0;
+      {/* Single continuous shape: outline + fill traced from the polyomino perimeter */}
+      <svg
+        width={totalW}
+        height={totalH}
+        style={{ position: "absolute", left: 0, top: 0, overflow: "visible", display: "block" }}
+      >
+        <path
+          d={shapeOutlinePath(shapeCells, cell, gap, r)}
+          fill={surface}
+          stroke={borderCol}
+          strokeWidth={1}
+          strokeLinejoin="round"
+        />
+      </svg>
+      {/* Glyph overlay — centered in the most-central tile of the shape (gap-aware) */}
+      {(() => {
+        const gb = glyphBox(gx, gy, has, cell, gap);
         return (
           <div
-            key={`${cx},${cy}`}
             style={{
               position: "absolute",
-              left: cLeft,
-              top: cTop,
-              width: cW,
-              height: cH,
-              background: surface,
-              backdropFilter: "blur(6px)",
-              borderRadius: `${tl}px ${tr}px ${br}px ${bl}px`,
-              border: `1px solid ${borderCol}`,
-              borderRight: has(cx + 1, cy) ? "none" : `1px solid ${borderCol}`,
-              borderBottom: has(cx, cy + 1) ? "none" : `1px solid ${borderCol}`,
+              left: gb.left,
+              top: gb.top,
+              width: gb.width,
+              height: gb.height,
+              padding: cell * 0.15,
+              opacity: 0.92,
+              pointerEvents: "none",
             }}
-          ></div>
+          >
+            <Glyph kind={t.glyph} style={iconStyle} color={itemColor} w={1} h={1} />
+          </div>
         );
-      })}
-      {/* Glyph overlay — positioned in most-central tile of the shape */}
-      <div
-        style={{
-          position: "absolute",
-          left: gx * (cell + gap),
-          top: gy * (cell + gap),
-          width: cell,
-          height: cell,
-          padding: cell * 0.15,
-          opacity: 0.92,
-          pointerEvents: "none",
-        }}
-      >
-        <Glyph kind={t.glyph} style={iconStyle} color={itemColor} w={1} h={1} />
-      </div>
+      })()}
       {/* Score badge — only in graph/lines mode */}
       {showScore && (
         <div
@@ -187,13 +303,16 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
     selSet.has(pair.b.id) ||
     (highlightedTypeId != null && (pair.a.type === highlightedTypeId || pair.b.type === highlightedTypeId));
 
-  // Get the center of the glyph cell (not the entire placement)
+  // Get the center of the glyph cell (gap-aware, matching the rendered glyph box)
   const glyphCenter = p => {
     const shapeCells = getShapeCells(p);
     const [gx, gy] = pickGlyphCell(shapeCells);
+    const set = new Set(shapeCells.map(([x, y]) => `${x},${y}`));
+    const has = (x, y) => set.has(`${x},${y}`);
+    const gb = glyphBox(gx, gy, has, cell, gap);
     return {
-      x: (p.x + gx) * (cell + gap) + cell / 2,
-      y: (p.y + gy) * (cell + gap) + cell / 2,
+      x: p.x * (cell + gap) + gb.left + gb.width / 2,
+      y: p.y * (cell + gap) + gb.top + gb.height / 2,
     };
   };
 
@@ -656,42 +775,24 @@ function GridSurface({
                 pointerEvents: "none",
               }}
             >
-              {ghostCells.map(([cx, cy]) => {
-                const cW = cell + (has(cx + 1, cy) ? gap : 0);
-                const cH = cell + (has(cx, cy + 1) ? gap : 0);
-                const gr = 6;
-                const tl = !has(cx - 1, cy) && !has(cx, cy - 1) ? gr : 0;
-                const tr = !has(cx + 1, cy) && !has(cx, cy - 1) ? gr : 0;
-                const br = !has(cx + 1, cy) && !has(cx, cy + 1) ? gr : 0;
-                const bl = !has(cx - 1, cy) && !has(cx, cy + 1) ? gr : 0;
-                return (
-                  <div
-                    key={`${cx},${cy}`}
-                    style={{
-                      position: "absolute",
-                      left: cx * (cell + gap),
-                      top: cy * (cell + gap),
-                      width: cW,
-                      height: cH,
-                      border: `1.5px dashed ${ghost.valid ? t.color : "oklch(0.7 0.18 25)"}`,
-                      borderRadius: `${tl}px ${tr}px ${br}px ${bl}px`,
-                      borderRight: has(cx + 1, cy) ? "none" : undefined,
-                      borderBottom: has(cx, cy + 1) ? "none" : undefined,
-                      background: ghost.valid
-                        ? `color-mix(in oklab, ${t.color} 12%, transparent)`
-                        : "rgba(255,80,80,0.05)",
-                      opacity: 0.7,
-                    }}
-                  ></div>
-                );
-              })}
+              <svg
+                width={gw * cell + (gw - 1) * gap}
+                height={gh * cell + (gh - 1) * gap}
+                style={{ position: "absolute", left: 0, top: 0, overflow: "visible", display: "block", opacity: 0.7 }}
+              >
+                <path
+                  d={shapeOutlinePath(ghostCells, cell, gap, 6)}
+                  fill={ghost.valid ? `color-mix(in oklab, ${t.color} 12%, transparent)` : "rgba(255,80,80,0.05)"}
+                  stroke={ghost.valid ? t.color : "oklch(0.7 0.18 25)"}
+                  strokeWidth={1.5}
+                  strokeDasharray="5 4"
+                  strokeLinejoin="round"
+                />
+              </svg>
               <div
                 style={{
                   position: "absolute",
-                  left: ggx * (cell + gap),
-                  top: ggy * (cell + gap),
-                  width: cell,
-                  height: cell,
+                  ...glyphBox(ggx, ggy, has, cell, gap),
                   padding: cell * 0.15,
                   opacity: 0.4,
                   pointerEvents: "none",
