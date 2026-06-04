@@ -74,17 +74,19 @@ function Glyph({ kind, style, color, w = 1, h = 1, cell = 56 }) {
       break;
     }
     case "rect": {
-      const pad = 22;
+      // Landscape rectangle (wider than tall) so it reads as a rectangle, not a square.
+      const padX = 14,
+        padY = 30;
       shape = (
         <rect
-          x={pad}
-          y={pad}
-          width={vbW - pad * 2}
-          height={vbH - pad * 2}
+          x={padX}
+          y={padY}
+          width={vbW - padX * 2}
+          height={vbH - padY * 2}
           fill={fill}
           stroke={stroke}
           strokeWidth={strokeWidth}
-          rx={6}
+          rx={5}
         />
       );
       break;
@@ -141,16 +143,7 @@ function Glyph({ kind, style, color, w = 1, h = 1, cell = 56 }) {
       shape = <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
   }
 
-  // 'glyph' style = stroked, 'solid' style = filled, 'dot' style = small filled with ring
-  if (style === "dot") {
-    return (
-      <svg viewBox={`0 0 ${vbW} ${vbH}`} width="100%" height="100%" style={{ display: "block" }}>
-        <circle cx={cx} cy={cy} r={r * 0.92} fill="none" stroke={color} strokeWidth={2} opacity={0.35} />
-        <circle cx={cx} cy={cy} r={r * 0.45} fill={color} />
-      </svg>
-    );
-  }
-
+  // 'glyph' style = stroked, 'solid' style = filled
   return (
     <svg viewBox={`0 0 ${vbW} ${vbH}`} width="100%" height="100%" style={{ display: "block" }}>
       {shape}

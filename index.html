@@ -17,7 +17,6 @@
     overflow: hidden;
   }
   body.theme-warm { background: #f5f1e8; color: #3a2f22; }
-  body.theme-mono { background: #0a0a0a; color: rgba(255,255,255,0.92); }
   * { box-sizing: border-box; }
   button { font-family: inherit; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -248,7 +247,7 @@ function useTweaks(defaults) {
 }
 
 const TWEAK_DEFAULTS = {
-  "theme": "mono",
+  "theme": "dark",
   "vizMode": "edges",
   "zoom": 100,
   "iconStyle": "solid",
@@ -273,7 +272,11 @@ function App() {
   const [shapeEditorTarget, setShapeEditorTarget] = useState(null);
   const [shapeConflict, setShapeConflict] = useState(null);
 
-  useEffect(() => {if (t.vizMode === 'aura') setTweak('vizMode', 'lines');}, []);
+  useEffect(() => {
+    if (t.vizMode === 'aura') setTweak('vizMode', 'lines');
+    if (t.theme === 'mono') setTweak('theme', 'dark');
+    if (t.iconStyle === 'dot') setTweak('iconStyle', 'solid');
+  }, []);
 
   useMemo(() => {setRuntimeItemTypes(itemTypes);return itemTypes;}, [itemTypes]);
 
@@ -631,12 +634,11 @@ function App() {
   };
 
   const isWarm = t.theme === 'warm';
-  const isMono = t.theme === 'mono';
   const fg = isWarm ? '#3a2f22' : 'rgba(255,255,255,0.92)';
   const fgFaint = isWarm ? 'rgba(60,50,40,0.35)' : 'rgba(255,255,255,0.3)';
-  const bg = isWarm ? '#f5f1e8' : isMono ? '#0a0a0a' : '#0e1116';
-  const surface = isWarm ? '#fbf8f0' : isMono ? '#141414' : '#141a23';
-  const surfaceSubtle = isWarm ? '#f0ebde' : isMono ? '#0e0e0e' : '#0d121a';
+  const bg = isWarm ? '#f5f1e8' : '#0e1116';
+  const surface = isWarm ? '#fbf8f0' : '#141a23';
+  const surfaceSubtle = isWarm ? '#f0ebde' : '#0d121a';
   const border = isWarm ? 'rgba(60,50,40,0.1)' : 'rgba(255,255,255,0.06)';
 
   const isRail = t.trayLayout === 'rail';

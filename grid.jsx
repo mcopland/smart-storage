@@ -174,9 +174,18 @@ function PlacedItem({
 }
 
 // ---------- visualization overlays ----------
-function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme }) {
+function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selectedIds = [], highlightedTypeId = null }) {
   const totalW = gridW * cell + (gridW - 1) * gap;
   const totalH = gridH * cell + (gridH - 1) * gap;
+
+  // When something is selected OR a type is hovered, the lines touching it read
+  // forward; the rest recede.
+  const selSet = new Set(selectedIds);
+  const hasFocus = selSet.size > 0 || highlightedTypeId != null;
+  const touchesFocus = pair =>
+    selSet.has(pair.a.id) ||
+    selSet.has(pair.b.id) ||
+    (highlightedTypeId != null && (pair.a.type === highlightedTypeId || pair.b.type === highlightedTypeId));
 
   // Get the center of the glyph cell (not the entire placement)
   const glyphCenter = p => {
@@ -215,18 +224,31 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme }) {
           const ca = glyphCenter(pair.a),
             cb = glyphCenter(pair.b);
           const colorA = ITEM_BY_ID[pair.a.type].color;
+          const colorB = ITEM_BY_ID[pair.b.type].color;
           const positive = pair.delta >= 0;
-          const stroke = positive ? colorA : "oklch(0.7 0.18 25)";
+          const gradId = `edge-grad-${i}`;
+          // Blend both endpoints' colors along the line (penalty still shown via dashes).
+          const stroke = `url(#${gradId})`;
+          const sel = touchesFocus(pair);
+          const dim = hasFocus && !sel;
+          const haloW = sel ? 9 : 6;
+          const haloOp = dim ? 0.05 : sel ? 0.34 : 0.18;
+          const lineW = sel ? 2.5 : 1.5;
+          const lineOp = dim ? 0.18 : sel ? 1 : 0.7;
           return (
-            <g key={i}>
+            <g key={i} style={{ transition: "opacity 160ms ease" }}>
+              <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1={ca.x} y1={ca.y} x2={cb.x} y2={cb.y}>
+                <stop offset="0%" stopColor={colorA} />
+                <stop offset="100%" stopColor={colorB} />
+              </linearGradient>
               <line
                 x1={ca.x}
                 y1={ca.y}
                 x2={cb.x}
                 y2={cb.y}
                 stroke={stroke}
-                strokeWidth={6}
-                opacity={0.18}
+                strokeWidth={haloW}
+                opacity={haloOp}
                 strokeLinecap="round"
               />
               <line
@@ -235,8 +257,8 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme }) {
                 x2={cb.x}
                 y2={cb.y}
                 stroke={stroke}
-                strokeWidth={1.5}
-                opacity={0.7}
+                strokeWidth={lineW}
+                opacity={lineOp}
                 strokeLinecap="round"
                 strokeDasharray={positive ? "0" : "4 4"}
               />
@@ -250,30 +272,41 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme }) {
           const mx = (ca.x + cb.x) / 2;
           const my = (ca.y + cb.y) / 2;
           const positive = pair.delta >= 0;
+          const sel = touchesFocus(pair);
+          const dim = hasFocus && !sel;
           const stroke = theme === "warm" ? "rgba(60,50,40,0.45)" : "rgba(255,255,255,0.35)";
           const labelBg = theme === "warm" ? "#fbf8f0" : "#0e1116";
           const labelFg = positive ? (theme === "warm" ? "#3a2f22" : "rgba(255,255,255,0.92)") : "oklch(0.7 0.18 25)";
           return (
-            <g key={i}>
+            <g key={i} opacity={dim ? 0.22 : 1} style={{ transition: "opacity 160ms ease" }}>
               <line
                 x1={ca.x}
                 y1={ca.y}
                 x2={cb.x}
                 y2={cb.y}
                 stroke={stroke}
-                strokeWidth={1}
+                strokeWidth={sel ? 2 : 1}
                 strokeDasharray={positive ? "0" : "3 3"}
               />
               {pair.delta !== 0 && (
                 <g transform={`translate(${mx},${my})`}>
-                  <rect x={-12} y={-7} width={24} height={14} rx={3} fill={labelBg} stroke={stroke} strokeWidth={0.5} />
+                  <rect
+                    x={-12}
+                    y={-7}
+                    width={24}
+                    height={14}
+                    rx={3}
+                    fill={labelBg}
+                    stroke={stroke}
+                    strokeWidth={sel ? 1 : 0.5}
+                  />
                   <text
                     x={0}
                     y={3.5}
                     textAnchor="middle"
                     fontFamily="'JetBrains Mono', monospace"
                     fontSize="9"
-                    fontWeight="500"
+                    fontWeight={sel ? 600 : 500}
                     fill={labelFg}
                   >
                     {positive ? "+" : ""}
@@ -594,6 +627,8 @@ function GridSurface({
           gridH={gridH}
           mode={vizMode}
           theme={theme}
+          selectedIds={selectedIds}
+          highlightedTypeId={highlightedTypeId}
         />
       )}
 

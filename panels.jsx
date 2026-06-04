@@ -833,63 +833,65 @@ function ScorePanel({
 
         <PanelSection label="Composition" theme={theme}>
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {Object.entries(perType).map(([id, info]) => {
-              const isHl = highlightedTypeId === id;
-              return (
-                <div
-                  key={id}
-                  onPointerEnter={() => onHoverTypeId && onHoverTypeId(id)}
-                  onPointerLeave={() => onHoverTypeId && onHoverTypeId(null)}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "14px 1fr auto auto",
-                    gap: 10,
-                    alignItems: "center",
-                    borderRadius: 4,
-                    padding: "5px 4px",
-                    margin: "0 -4px",
-                    background: isHl ? `color-mix(in oklab, ${info.color} 12%, transparent)` : "transparent",
-                    transition: "background 120ms",
-                    cursor: "default",
-                  }}
-                >
+            {Object.entries(perType)
+              .sort((a, b) => b[1].base + b[1].bonus - (a[1].base + a[1].bonus))
+              .map(([id, info]) => {
+                const isHl = highlightedTypeId === id;
+                return (
                   <div
+                    key={id}
+                    onPointerEnter={() => onHoverTypeId && onHoverTypeId(id)}
+                    onPointerLeave={() => onHoverTypeId && onHoverTypeId(null)}
                     style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 2,
-                      background: info.color,
-                      boxShadow: isHl ? `0 0 8px 2px color-mix(in oklab, ${info.color} 33%, transparent)` : "none",
-                      transition: "box-shadow 160ms",
-                    }}
-                  />
-                  <div style={{ font: "12px/1 Inter, sans-serif", color: fg }}>
-                    {info.name} <span style={{ color: fgFaint }}>×{info.count}</span>
-                  </div>
-                  <div
-                    style={{
-                      font: '500 11px/1 "JetBrains Mono", monospace',
-                      color: fgDim,
-                      fontVariantNumeric: "tabular-nums",
+                      display: "grid",
+                      gridTemplateColumns: "14px 1fr auto auto",
+                      gap: 10,
+                      alignItems: "center",
+                      borderRadius: 4,
+                      padding: "5px 4px",
+                      margin: "0 -4px",
+                      background: isHl ? `color-mix(in oklab, ${info.color} 12%, transparent)` : "transparent",
+                      transition: "background 120ms",
+                      cursor: "default",
                     }}
                   >
-                    {info.base}
+                    <div
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 2,
+                        background: info.color,
+                        boxShadow: isHl ? `0 0 8px 2px color-mix(in oklab, ${info.color} 33%, transparent)` : "none",
+                        transition: "box-shadow 160ms",
+                      }}
+                    />
+                    <div style={{ font: "12px/1 Inter, sans-serif", color: fg }}>
+                      {info.name} <span style={{ color: fgFaint }}>×{info.count}</span>
+                    </div>
+                    <div
+                      style={{
+                        font: '500 11px/1 "JetBrains Mono", monospace',
+                        color: fgDim,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {info.base}
+                    </div>
+                    <div
+                      style={{
+                        font: '500 11px/1 "JetBrains Mono", monospace',
+                        color: info.bonus >= 0 ? "oklch(0.78 0.12 195)" : "oklch(0.7 0.18 25)",
+                        fontVariantNumeric: "tabular-nums",
+                        width: 32,
+                        textAlign: "right",
+                      }}
+                    >
+                      {info.bonus >= 0 ? "+" : ""}
+                      {info.bonus}
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      font: '500 11px/1 "JetBrains Mono", monospace',
-                      color: info.bonus >= 0 ? "oklch(0.78 0.12 195)" : "oklch(0.7 0.18 25)",
-                      fontVariantNumeric: "tabular-nums",
-                      width: 32,
-                      textAlign: "right",
-                    }}
-                  >
-                    {info.bonus >= 0 ? "+" : ""}
-                    {info.bonus}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </PanelSection>
 
@@ -1188,13 +1190,6 @@ const Moon = () => (
   </svg>
 );
 
-const HalfMoon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <circle cx="8" cy="8" r="5.2" stroke="currentColor" strokeWidth="1.4" />
-    <path d="M8 2.8a5.2 5.2 0 0 1 0 10.4z" fill="currentColor" />
-  </svg>
-);
-
 const SolidIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16">
     <rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" />
@@ -1204,13 +1199,6 @@ const SolidIcon = () => (
 const OutlineIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-  </svg>
-);
-
-const DotIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
-    <circle cx="8" cy="8" r="2.2" fill="currentColor" />
   </svg>
 );
 
@@ -1261,7 +1249,6 @@ function InlineTweaks({ t, setTweak, theme }) {
         onChange={v => setTweak("theme", v)}
         options={[
           { value: "dark", icon: <Moon />, title: "Dark" },
-          { value: "mono", icon: <HalfMoon />, title: "Mono" },
           { value: "warm", icon: <Sun />, title: "Warm" },
         ]}
       />
@@ -1273,7 +1260,6 @@ function InlineTweaks({ t, setTweak, theme }) {
         options={[
           { value: "solid", icon: <SolidIcon />, title: "Solid" },
           { value: "glyph", icon: <OutlineIcon />, title: "Outline" },
-          { value: "dot", icon: <DotIcon />, title: "Dot" },
         ]}
       />
       <ToggleGroup
@@ -1993,41 +1979,22 @@ function ShortcutsRow({ theme }) {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 14, alignItems: "center" }}>
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
-        {items.slice(0, 2).map((it, i) => (
-          <div
-            key={i}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 7,
-              font: "400 11px/1 Inter, sans-serif",
-              color: fgDim,
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center" }}>{it.keys}</span>
-            <span>{it.label}</span>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
-        {items.slice(2).map((it, i) => (
-          <div
-            key={i}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 7,
-              font: "400 11px/1 Inter, sans-serif",
-              color: fgDim,
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center" }}>{it.keys}</span>
-            <span>{it.label}</span>
-          </div>
-        ))}
-      </div>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "flex-start",
+        gap: 26,
+        flexWrap: "wrap",
+        marginTop: 14,
+      }}
+    >
+      {items.map((it, i) => (
+        <div key={i} style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+          <span style={{ display: "inline-flex", alignItems: "center" }}>{it.keys}</span>
+          <span style={{ font: "400 11px/1 Inter, sans-serif", color: fgDim }}>{it.label}</span>
+        </div>
+      ))}
     </div>
   );
 }
