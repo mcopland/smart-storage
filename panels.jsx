@@ -129,8 +129,6 @@ function Tray({
           const disabled = count <= 0;
           const [w, h] = getTypeSize(tt);
           const isSel = selectedTypeId === tt.id;
-          const showTruncated = tt.name.length > 4;
-          const labelText = showTruncated ? tt.name.slice(0, 3) + "…" : tt.name;
           const numCells = tt.cells ? tt.cells.length : w * h;
           return (
             <div
@@ -191,26 +189,17 @@ function Tray({
                   position: "absolute",
                   bottom: 4,
                   left: 6,
-                  right: 22,
+                  right: 6,
                   font: "500 9px/1 Inter, sans-serif",
                   color: isWarm ? "rgba(60,50,40,0.75)" : "rgba(255,255,255,0.7)",
+                  textAlign: "center",
                   whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
                 title={tt.name}
               >
-                {labelText}
-              </div>
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 4,
-                  right: 6,
-                  font: '500 8.5px/1 "JetBrains Mono", monospace',
-                  color: isWarm ? "rgba(60,50,40,0.5)" : "rgba(255,255,255,0.4)",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                {numCells}c
+                {tt.name}
               </div>
             </div>
           );
