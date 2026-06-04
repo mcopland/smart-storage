@@ -1188,13 +1188,6 @@ const Moon = () => (
   </svg>
 );
 
-const HalfMoon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <circle cx="8" cy="8" r="5.2" stroke="currentColor" strokeWidth="1.4" />
-    <path d="M8 2.8a5.2 5.2 0 0 1 0 10.4z" fill="currentColor" />
-  </svg>
-);
-
 const SolidIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16">
     <rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" />
@@ -1204,13 +1197,6 @@ const SolidIcon = () => (
 const OutlineIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-  </svg>
-);
-
-const DotIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
-    <circle cx="8" cy="8" r="2.2" fill="currentColor" />
   </svg>
 );
 
@@ -1261,7 +1247,6 @@ function InlineTweaks({ t, setTweak, theme }) {
         onChange={v => setTweak("theme", v)}
         options={[
           { value: "dark", icon: <Moon />, title: "Dark" },
-          { value: "mono", icon: <HalfMoon />, title: "Mono" },
           { value: "warm", icon: <Sun />, title: "Warm" },
         ]}
       />
@@ -1273,7 +1258,6 @@ function InlineTweaks({ t, setTweak, theme }) {
         options={[
           { value: "solid", icon: <SolidIcon />, title: "Solid" },
           { value: "glyph", icon: <OutlineIcon />, title: "Outline" },
-          { value: "dot", icon: <DotIcon />, title: "Dot" },
         ]}
       />
       <ToggleGroup
