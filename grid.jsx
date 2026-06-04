@@ -323,8 +323,8 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
         if (adjacent(placements[i], placements[j])) {
           const ta = ITEM_BY_ID[placements[i].type];
           const tb = ITEM_BY_ID[placements[j].type];
-          const da = ta.synergy[placements[j].type] ?? 0;
-          const db = tb.synergy[placements[i].type] ?? 0;
+          const da = tagSynergy(ta, tb);
+          const db = tagSynergy(tb, ta);
           out.push({ a: placements[i], b: placements[j], delta: da + db });
         }
       }

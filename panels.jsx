@@ -141,7 +141,7 @@ function Tray({
               onPointerLeave={() => {
                 if (onHoverTypeId) onHoverTypeId(null);
               }}
-              title={`${tt.name} — ${numCells} cells, base ${tt.base}${disabled ? " (none in stock)" : ""}`}
+              title={`${tt.name} — ${numCells} cells${tt.tags && tt.tags.length ? ` · ${tt.tags.join(", ")}` : ""}${disabled ? " (none in stock)" : ""}`}
               style={{
                 position: "relative",
                 width: tileSize,
@@ -437,6 +437,248 @@ function TextField({ value, onChange, style, multiline }) {
   return <input {...props} />;
 }
 
+// ---- Tag chips — the strings an object carries (e.g. "Sword", "Electric") ----
+function TagChips({ tags, onChange, theme, color, suggestions }) {
+  const isWarm = theme === "warm";
+  const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
+  const fgFaint = isWarm ? "rgba(60,50,40,0.4)" : "rgba(255,255,255,0.35)";
+  const border = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.07)";
+  const inputBg = isWarm ? "rgba(255,253,247,0.6)" : "rgba(255,255,255,0.03)";
+  const list = tags || [];
+  const [draft, setDraft] = React.useState("");
+  const add = raw => {
+    const v = (raw || "").trim();
+    setDraft("");
+    if (!v) return;
+    if (list.some(x => x.toLowerCase() === v.toLowerCase())) return;
+    onChange([...list, v]);
+  };
+  const remove = t => onChange(list.filter(x => x !== t));
+  const chip = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "3px 4px 3px 8px",
+    borderRadius: 999,
+    background: `color-mix(in oklab, ${color} 14%, transparent)`,
+    border: `1px solid color-mix(in oklab, ${color} 45%, transparent)`,
+    font: "500 11px/1 Inter, sans-serif",
+    color: fg,
+    whiteSpace: "nowrap",
+  };
+  const dlId = React.useId ? React.useId() : "tagsug";
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 6,
+        alignItems: "center",
+        padding: 7,
+        minHeight: 36,
+        background: inputBg,
+        border: `1px solid ${border}`,
+        borderRadius: 6,
+      }}
+    >
+      {list.map(t => (
+        <span key={t} style={chip}>
+          {t}
+          <button
+            onClick={() => remove(t)}
+            title="Remove tag"
+            style={{
+              width: 15,
+              height: 15,
+              lineHeight: "13px",
+              padding: 0,
+              border: "none",
+              borderRadius: 999,
+              cursor: "pointer",
+              background: "transparent",
+              color: fgFaint,
+              font: "13px/1 Inter, sans-serif",
+            }}
+            onPointerEnter={e => {
+              e.currentTarget.style.color = fg;
+            }}
+            onPointerLeave={e => {
+              e.currentTarget.style.color = fgFaint;
+            }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        list={dlId}
+        placeholder={list.length ? "add tag…" : "e.g. Sword, Electric…"}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            add(draft);
+          } else if (e.key === "Backspace" && draft === "" && list.length) remove(list[list.length - 1]);
+        }}
+        onBlur={() => add(draft)}
+        style={{
+          flex: 1,
+          minWidth: 70,
+          padding: "2px 2px",
+          background: "transparent",
+          border: "none",
+          outline: "none",
+          color: fg,
+          font: "12px/1.2 Inter, sans-serif",
+        }}
+      />
+      <datalist id={dlId}>
+        {(suggestions || [])
+          .filter(s => !list.includes(s))
+          .map(s => (
+            <option key={s} value={s} />
+          ))}
+      </datalist>
+    </div>
+  );
+}
+
+// ---- Synergy rules — blank slate + "Add Synergy". Each rule is a tag the object
+// reacts to, plus a positive (bonus) or negative (penalty) value. ----
+function SynergyRules({ synergies, onChange, theme, suggestions }) {
+  const isWarm = theme === "warm";
+  const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
+  const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
+  const fgFaint = isWarm ? "rgba(60,50,40,0.4)" : "rgba(255,255,255,0.35)";
+  const border = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.07)";
+  const inputBg = isWarm ? "rgba(255,253,247,0.6)" : "rgba(255,255,255,0.03)";
+  const accent = "oklch(0.78 0.12 195)";
+  const danger = "oklch(0.7 0.18 25)";
+  const rules = synergies || [];
+
+  const setRule = (i, patch) => onChange(rules.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+  const removeRule = i => onChange(rules.filter((_, k) => k !== i));
+  const addRule = () => onChange([...rules, { tag: "", value: 2 }]);
+
+  const dlId = React.useId ? React.useId() : "synsug";
+  const fieldBase = {
+    background: inputBg,
+    border: `1px solid ${border}`,
+    borderRadius: 4,
+    color: fg,
+    font: '500 11.5px/1.2 "JetBrains Mono", monospace',
+    outline: "none",
+  };
+
+  return (
+    <div>
+      <datalist id={dlId}>
+        {(suggestions || []).map(s => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
+      {rules.length === 0 ? (
+        <div
+          style={{
+            padding: "12px 10px",
+            marginBottom: 8,
+            borderRadius: 6,
+            border: `1px dashed ${border}`,
+            textAlign: "center",
+            font: "11.5px/1.5 Inter, sans-serif",
+            color: fgFaint,
+          }}
+        >
+          No synergies yet. Add a tag this object reacts to.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+          {rules.map((r, i) => {
+            const positive = (Number(r.value) || 0) >= 0;
+            return (
+              <div
+                key={i}
+                style={{ display: "grid", gridTemplateColumns: "1fr 54px 22px", gap: 6, alignItems: "center" }}
+              >
+                <input
+                  value={r.tag}
+                  list={dlId}
+                  placeholder="tag…"
+                  onChange={e => setRule(i, { tag: e.target.value })}
+                  style={{ ...fieldBase, padding: "5px 8px", font: "500 11.5px/1.2 Inter, sans-serif" }}
+                />
+                <NumberField
+                  value={r.value}
+                  allowNegative
+                  onCommit={n => setRule(i, { value: n })}
+                  style={{
+                    ...fieldBase,
+                    padding: "5px 6px",
+                    textAlign: "right",
+                    color: positive ? accent : danger,
+                    borderColor: `color-mix(in oklab, ${positive ? accent : danger} 40%, ${border})`,
+                  }}
+                />
+                <button
+                  onClick={() => removeRule(i)}
+                  title="Remove synergy"
+                  style={{
+                    width: 22,
+                    height: 26,
+                    padding: 0,
+                    cursor: "pointer",
+                    background: "transparent",
+                    border: `1px solid ${border}`,
+                    borderRadius: 4,
+                    color: fgFaint,
+                    font: "14px/1 Inter, sans-serif",
+                  }}
+                  onPointerEnter={e => {
+                    e.currentTarget.style.color = danger;
+                    e.currentTarget.style.borderColor = danger;
+                  }}
+                  onPointerLeave={e => {
+                    e.currentTarget.style.color = fgFaint;
+                    e.currentTarget.style.borderColor = border;
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <button
+        onClick={addRule}
+        style={{
+          width: "100%",
+          padding: "7px 12px",
+          cursor: "pointer",
+          background: "transparent",
+          border: `1px dashed ${isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.18)"}`,
+          borderRadius: 6,
+          color: fgDim,
+          font: "500 11.5px/1 Inter, sans-serif",
+          letterSpacing: "0.02em",
+          transition: "border-color 120ms, color 120ms",
+        }}
+        onPointerEnter={e => {
+          e.currentTarget.style.borderColor = accent;
+          e.currentTarget.style.color = accent;
+        }}
+        onPointerLeave={e => {
+          e.currentTarget.style.borderColor = isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.18)";
+          e.currentTarget.style.color = fgDim;
+        }}
+      >
+        + Add Synergy
+      </button>
+    </div>
+  );
+}
+
 // ---- Selected: editable object-definition form ----
 function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDeleteType, onEditShape }) {
   const isWarm = theme === "warm";
@@ -465,6 +707,13 @@ function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDel
   };
 
   const update = patch => onUpdateType(itemType.id, patch);
+
+  // Suggest tags already defined anywhere in the catalog.
+  const allTags = React.useMemo(() => {
+    const set = new Set();
+    for (const tt of allTypes || []) for (const tg of tt.tags || []) set.add(tg);
+    return Array.from(set).sort();
+  }, [allTypes]);
 
   return (
     <div>
@@ -495,11 +744,15 @@ function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDel
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginBottom: 14 }}>
-        <div>
-          <div style={{ ...labelStyle, marginBottom: 4 }}>Base</div>
-          <NumberField value={itemType.base} onCommit={v => update({ base: v })} style={inputStyle} />
-        </div>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ ...labelStyle, marginBottom: 6 }}>Tags</div>
+        <TagChips
+          tags={itemType.tags}
+          color={itemType.color}
+          theme={theme}
+          suggestions={allTags}
+          onChange={tags => update({ tags })}
+        />
       </div>
 
       <div style={{ marginBottom: 14 }}>
@@ -549,41 +802,12 @@ function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDel
 
       <div>
         <div style={{ ...labelStyle, marginBottom: 6 }}>Synergy with</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          {allTypes.map(other => {
-            const cur = itemType.synergy?.[other.id] ?? 0;
-            return (
-              <div
-                key={other.id}
-                style={{ display: "grid", gridTemplateColumns: "12px 1fr 64px", gap: 8, alignItems: "center" }}
-              >
-                <div style={{ width: 8, height: 8, borderRadius: 1, background: other.color }} />
-                <div
-                  style={{
-                    font: "11.5px/1.2 Inter, sans-serif",
-                    color: fgDim,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {other.name}
-                </div>
-                <NumberField
-                  value={cur}
-                  allowNegative
-                  onCommit={n => {
-                    const synergy = { ...(itemType.synergy || {}) };
-                    if (n === 0 || !Number.isFinite(n)) delete synergy[other.id];
-                    else synergy[other.id] = n;
-                    update({ synergy });
-                  }}
-                  style={{ ...inputStyle, padding: "3px 6px", textAlign: "right" }}
-                />
-              </div>
-            );
-          })}
-        </div>
+        <SynergyRules
+          synergies={itemType.synergies}
+          theme={theme}
+          suggestions={allTags}
+          onChange={synergies => update({ synergies })}
+        />
       </div>
 
       {detail && (
@@ -604,12 +828,11 @@ function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDel
         >
           <span>this instance</span>
           <span style={{ color: fg }}>
-            {detail.base}{" "}
-            <span style={{ color: detail.bonus >= 0 ? "oklch(0.78 0.12 195)" : "oklch(0.7 0.18 25)" }}>
-              {detail.bonus >= 0 ? "+" : ""}
-              {detail.bonus}
-            </span>{" "}
-            <span style={{ color: fg, fontWeight: 600 }}>= {detail.total}</span>
+            <span style={{ color: fgFaint }}>synergy</span>{" "}
+            <span style={{ color: detail.total >= 0 ? "oklch(0.78 0.12 195)" : "oklch(0.7 0.18 25)", fontWeight: 600 }}>
+              {detail.total >= 0 ? "+" : ""}
+              {detail.total}
+            </span>
           </span>
         </div>
       )}
@@ -775,9 +998,8 @@ function ScorePanel({
   for (const p of placements) {
     const tt = typeById[p.type];
     if (!tt) continue;
-    perType[p.type] = perType[p.type] || { count: 0, base: 0, bonus: 0, color: tt.color, name: tt.name };
+    perType[p.type] = perType[p.type] || { count: 0, bonus: 0, color: tt.color, name: tt.name };
     perType[p.type].count += 1;
-    perType[p.type].base += tt.base;
     perType[p.type].bonus += scoreData?.perItem[p.id]?.bonus ?? 0;
   }
 
@@ -823,7 +1045,7 @@ function ScorePanel({
         <PanelSection label="Composition" theme={theme}>
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {Object.entries(perType)
-              .sort((a, b) => b[1].base + b[1].bonus - (a[1].base + a[1].bonus))
+              .sort((a, b) => b[1].bonus - a[1].bonus)
               .map(([id, info]) => {
                 const isHl = highlightedTypeId === id;
                 return (
@@ -833,7 +1055,7 @@ function ScorePanel({
                     onPointerLeave={() => onHoverTypeId && onHoverTypeId(null)}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "14px 1fr auto auto",
+                      gridTemplateColumns: "14px 1fr auto",
                       gap: 10,
                       alignItems: "center",
                       borderRadius: 4,
@@ -856,15 +1078,6 @@ function ScorePanel({
                     />
                     <div style={{ font: "12px/1 Inter, sans-serif", color: fg }}>
                       {info.name} <span style={{ color: fgFaint }}>×{info.count}</span>
-                    </div>
-                    <div
-                      style={{
-                        font: '500 11px/1 "JetBrains Mono", monospace',
-                        color: fgDim,
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {info.base}
                     </div>
                     <div
                       style={{
@@ -1287,7 +1500,6 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
   const accent = "oklch(0.78 0.12 195)";
 
   const [name, setName] = React.useState("");
-  const [base, setBase] = React.useState(5);
   const [count, setCount] = React.useState(1);
   const [assignedCombo, setAssignedCombo] = React.useState(null);
   const [cells, setCells] = React.useState([]);
@@ -1302,7 +1514,6 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
       setAssignedCombo(combo);
       setCells(combo.cells);
       setName(getComboName(combo));
-      setBase(5);
       setCount(1);
     }
   }, [open, onClose]);
@@ -1352,9 +1563,9 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
         glyph: assignedCombo.glyph,
         color: assignedCombo.color,
         cells: normalized,
-        base: parseInt(base, 10) || 0,
+        tags: [],
         desc: "",
-        synergy: {},
+        synergies: [],
       },
       parseInt(count, 10) || 0,
     );
@@ -1403,15 +1614,9 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-          <div>
-            <div style={labelStyle}>Base Score</div>
-            <input type="number" value={base} onChange={e => setBase(e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <div style={labelStyle}>Quantity</div>
-            <input type="number" value={count} onChange={e => setCount(e.target.value)} style={inputStyle} />
-          </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={labelStyle}>Quantity</div>
+          <input type="number" value={count} onChange={e => setCount(e.target.value)} style={inputStyle} />
         </div>
 
         {/* Shape editor */}

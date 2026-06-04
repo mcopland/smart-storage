@@ -47,15 +47,21 @@ const DEFAULT_CELLS_FOR_GLYPH = {
 
 const MAX_OBJECT_TYPES = PREDEFINED_COLORS.length * PREDEFINED_GLYPHS.length; // 64
 
+// Objects carry `tags` (what they ARE) and `synergies` (tag-based rules: gain or
+// lose points when adjacent to objects carrying a given tag). There is no base
+// score — an object's score is purely the sum of its synergy connections.
 const ITEM_TYPES = [
   {
     id: "core",
     name: "Core",
     glyph: "hex",
     color: "oklch(0.78 0.12 195)",
-    base: 12,
-    desc: "Foundation unit. Strong with itself in clusters.",
-    synergy: { core: 4, relay: 2 },
+    desc: "Foundation unit. Strong clustered with power and signal.",
+    tags: ["Power", "Core"],
+    synergies: [
+      { tag: "Core", value: 4 },
+      { tag: "Signal", value: 2 },
+    ],
     cells: [[0, 0]],
   },
   {
@@ -63,9 +69,12 @@ const ITEM_TYPES = [
     name: "Relay",
     glyph: "diamond",
     color: "oklch(0.82 0.10 240)",
-    base: 8,
-    desc: "Amplifies neighbors. Best between two cores.",
-    synergy: { core: 3, conduit: 3 },
+    desc: "Amplifies neighbors. Best between power and links.",
+    tags: ["Signal"],
+    synergies: [
+      { tag: "Power", value: 3 },
+      { tag: "Link", value: 3 },
+    ],
     cells: [[0, 0]],
   },
   {
@@ -73,9 +82,12 @@ const ITEM_TYPES = [
     name: "Conduit",
     glyph: "tri",
     color: "oklch(0.86 0.16 110)",
-    base: 6,
-    desc: "L-shaped link. Pairs well with relays.",
-    synergy: { relay: 4, capacitor: 2 },
+    desc: "L-shaped link. Pairs well with signal and storage.",
+    tags: ["Signal", "Link"],
+    synergies: [
+      { tag: "Signal", value: 4 },
+      { tag: "Storage", value: 2 },
+    ],
     cells: [
       [0, 0],
       [1, 0],
@@ -87,9 +99,13 @@ const ITEM_TYPES = [
     name: "Capacitor",
     glyph: "rect",
     color: "oklch(0.78 0.13 25)",
-    base: 14,
-    desc: "T-shaped storage. Penalty next to other capacitors.",
-    synergy: { conduit: 4, core: 2, capacitor: -3 },
+    desc: "T-shaped storage. Penalty next to other storage.",
+    tags: ["Storage"],
+    synergies: [
+      { tag: "Link", value: 4 },
+      { tag: "Power", value: 2 },
+      { tag: "Storage", value: -3 },
+    ],
     cells: [
       [0, 0],
       [1, 0],
@@ -102,9 +118,13 @@ const ITEM_TYPES = [
     name: "Sensor",
     glyph: "circle",
     color: "oklch(0.83 0.10 305)",
-    base: 5,
-    desc: "Cheap. Bonus when next to anything but itself.",
-    synergy: { core: 2, relay: 2, conduit: 2, capacitor: 3, sensor: -1 },
+    desc: "Cheap. Bonus near most things, crowds badly with itself.",
+    tags: ["Signal", "Sensor"],
+    synergies: [
+      { tag: "Power", value: 2 },
+      { tag: "Storage", value: 3 },
+      { tag: "Sensor", value: -1 },
+    ],
     cells: [[0, 0]],
   },
   {
@@ -112,9 +132,12 @@ const ITEM_TYPES = [
     name: "Shield",
     glyph: "pent",
     color: "oklch(0.80 0.05 165)",
-    base: 9,
-    desc: "Defensive L-shape. Boosts capacitors and cores.",
-    synergy: { capacitor: 4, core: 3 },
+    desc: "Defensive L-shape. Boosts storage and power.",
+    tags: ["Defense"],
+    synergies: [
+      { tag: "Storage", value: 4 },
+      { tag: "Power", value: 3 },
+    ],
     cells: [
       [0, 0],
       [0, 1],
@@ -317,11 +340,24 @@ function adjacent(a, b) {
   return false;
 }
 
+// Points `fromType` gains for being adjacent to `toType`: sum of fromType's
+// synergy rules whose tag appears in toType's tags. Values may be negative.
+function tagSynergy(fromType, toType) {
+  if (!fromType || !toType || !Array.isArray(fromType.synergies)) return 0;
+  const tags = toType.tags;
+  if (!tags || tags.length === 0) return 0;
+  const tagSet = new Set(tags);
+  let sum = 0;
+  for (const s of fromType.synergies) {
+    if (s && s.tag && tagSet.has(s.tag)) sum += Number(s.value) || 0;
+  }
+  return sum;
+}
+
 function calcScore(placements) {
   const perItem = {};
   for (const p of placements) {
-    const t = ITEM_BY_ID[p.type];
-    perItem[p.id] = { base: t.base, bonus: 0, total: t.base, neighbors: [] };
+    perItem[p.id] = { bonus: 0, total: 0, neighbors: [] };
   }
   for (let i = 0; i < placements.length; i++) {
     for (let j = i + 1; j < placements.length; j++) {
@@ -330,8 +366,8 @@ function calcScore(placements) {
       if (!adjacent(a, b)) continue;
       const ta = ITEM_BY_ID[a.type],
         tb = ITEM_BY_ID[b.type];
-      const da = ta.synergy[b.type] ?? 0;
-      const db = tb.synergy[a.type] ?? 0;
+      const da = tagSynergy(ta, tb);
+      const db = tagSynergy(tb, ta);
       perItem[a.id].bonus += da;
       perItem[b.id].bonus += db;
       perItem[a.id].neighbors.push({ id: b.id, type: b.type, delta: da });
@@ -340,7 +376,7 @@ function calcScore(placements) {
   }
   let total = 0;
   for (const p of placements) {
-    perItem[p.id].total = perItem[p.id].base + perItem[p.id].bonus;
+    perItem[p.id].total = perItem[p.id].bonus;
     total += perItem[p.id].total;
   }
   return { perItem, total };
@@ -390,6 +426,7 @@ Object.assign(window, {
   adjacent,
   calcScore,
   findClusters,
+  tagSynergy,
   setRuntimeItemTypes,
   getShapeCells,
   rotateCells,
