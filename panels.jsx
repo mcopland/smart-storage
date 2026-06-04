@@ -141,7 +141,7 @@ function Tray({
               onPointerLeave={() => {
                 if (onHoverTypeId) onHoverTypeId(null);
               }}
-              title={`${tt.name} — ${numCells} cells, base ${tt.base}${disabled ? " (none in stock)" : ""}`}
+              title={`${tt.name} — ${numCells} cells${tt.tags && tt.tags.length ? ` · ${tt.tags.join(", ")}` : ""}${disabled ? " (none in stock)" : ""}`}
               style={{
                 position: "relative",
                 width: tileSize,
@@ -998,9 +998,8 @@ function ScorePanel({
   for (const p of placements) {
     const tt = typeById[p.type];
     if (!tt) continue;
-    perType[p.type] = perType[p.type] || { count: 0, base: 0, bonus: 0, color: tt.color, name: tt.name };
+    perType[p.type] = perType[p.type] || { count: 0, bonus: 0, color: tt.color, name: tt.name };
     perType[p.type].count += 1;
-    perType[p.type].base += tt.base;
     perType[p.type].bonus += scoreData?.perItem[p.id]?.bonus ?? 0;
   }
 
@@ -1046,7 +1045,7 @@ function ScorePanel({
         <PanelSection label="Composition" theme={theme}>
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {Object.entries(perType)
-              .sort((a, b) => b[1].base + b[1].bonus - (a[1].base + a[1].bonus))
+              .sort((a, b) => b[1].bonus - a[1].bonus)
               .map(([id, info]) => {
                 const isHl = highlightedTypeId === id;
                 return (
@@ -1056,7 +1055,7 @@ function ScorePanel({
                     onPointerLeave={() => onHoverTypeId && onHoverTypeId(null)}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "14px 1fr auto auto",
+                      gridTemplateColumns: "14px 1fr auto",
                       gap: 10,
                       alignItems: "center",
                       borderRadius: 4,
@@ -1079,15 +1078,6 @@ function ScorePanel({
                     />
                     <div style={{ font: "12px/1 Inter, sans-serif", color: fg }}>
                       {info.name} <span style={{ color: fgFaint }}>×{info.count}</span>
-                    </div>
-                    <div
-                      style={{
-                        font: '500 11px/1 "JetBrains Mono", monospace',
-                        color: fgDim,
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {info.base}
                     </div>
                     <div
                       style={{
@@ -1510,7 +1500,6 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
   const accent = "oklch(0.78 0.12 195)";
 
   const [name, setName] = React.useState("");
-  const [base, setBase] = React.useState(5);
   const [count, setCount] = React.useState(1);
   const [assignedCombo, setAssignedCombo] = React.useState(null);
   const [cells, setCells] = React.useState([]);
@@ -1525,7 +1514,6 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
       setAssignedCombo(combo);
       setCells(combo.cells);
       setName(getComboName(combo));
-      setBase(5);
       setCount(1);
     }
   }, [open, onClose]);
@@ -1575,9 +1563,9 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
         glyph: assignedCombo.glyph,
         color: assignedCombo.color,
         cells: normalized,
-        base: parseInt(base, 10) || 0,
+        tags: [],
         desc: "",
-        synergy: {},
+        synergies: [],
       },
       parseInt(count, 10) || 0,
     );
@@ -1626,15 +1614,9 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-          <div>
-            <div style={labelStyle}>Base Score</div>
-            <input type="number" value={base} onChange={e => setBase(e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <div style={labelStyle}>Quantity</div>
-            <input type="number" value={count} onChange={e => setCount(e.target.value)} style={inputStyle} />
-          </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={labelStyle}>Quantity</div>
+          <input type="number" value={count} onChange={e => setCount(e.target.value)} style={inputStyle} />
         </div>
 
         {/* Shape editor */}
