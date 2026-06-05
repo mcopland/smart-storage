@@ -248,7 +248,7 @@ function PlacedItem({
           strokeWidth={1}
           strokeLinejoin="round"
           onPointerDown={e => onPointerDown(e, p)}
-          onPointerEnter={() => onHoverEnter && onHoverEnter(p.type)}
+          onPointerEnter={() => onHoverEnter && onHoverEnter(p)}
           onPointerLeave={() => onHoverLeave && onHoverLeave()}
           style={{ pointerEvents: "auto", cursor: "grab" }}
         >
@@ -472,6 +472,8 @@ function GridSurface({
   toggleDisabledCell,
   highlightedTypeId,
   onHoverTypeId,
+  hoveredId,
+  onHoverPlacement,
   highlightStyle,
 }) {
   const surfaceRef = useRef(null);
@@ -492,7 +494,7 @@ function GridSurface({
 
   const isWarm = theme === "warm";
   // A "focus" is active when something is selected or an inventory type is hovered.
-  const focusActive = selectedIds.length > 0 || highlightedTypeId != null;
+  const focusActive = selectedIds.length > 0 || highlightedTypeId != null || hoveredId != null;
   const totalW = gridW * cell + (gridW - 1) * gap;
   const totalH = gridH * cell + (gridH - 1) * gap;
 
@@ -741,11 +743,11 @@ function GridSurface({
           score={scoreData?.perItem[p.id]?.total}
           vizMode={vizMode}
           onPointerDown={onItemPointerDown}
-          onHoverEnter={typeId => onHoverTypeId && onHoverTypeId(typeId)}
-          onHoverLeave={() => onHoverTypeId && onHoverTypeId(null)}
+          onHoverEnter={pl => onHoverPlacement && onHoverPlacement(pl.id)}
+          onHoverLeave={() => onHoverPlacement && onHoverPlacement(null)}
           theme={theme}
           iconStyle={iconStyle}
-          highlighted={highlightedTypeId === p.type}
+          highlighted={highlightedTypeId === p.type || hoveredId === p.id}
           highlightStyle={highlightStyle}
           focusActive={focusActive}
         />
@@ -761,7 +763,7 @@ function GridSurface({
           gridH={gridH}
           mode={vizMode}
           theme={theme}
-          selectedIds={selectedIds}
+          selectedIds={hoveredId != null ? [...selectedIds, hoveredId] : selectedIds}
           highlightedTypeId={highlightedTypeId}
         />
       )}

@@ -346,7 +346,7 @@ function Tray({
                     e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)";
                 }}
               >
-                {isRail ? "Place" : `Place all${remaining > 0 ? ` (${remaining})` : ""}`}
+                {isRail ? "Place" : `Place All${remaining > 0 ? ` (${remaining})` : ""}`}
               </button>
             </div>
           );
@@ -1106,6 +1106,7 @@ function ScorePanel({
   onHoverTypeId,
   inventory,
   onSetStock,
+  iconStyle,
 }) {
   const isWarm = theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
@@ -1119,7 +1120,7 @@ function ScorePanel({
   for (const p of placements) {
     const tt = typeById[p.type];
     if (!tt) continue;
-    perType[p.type] = perType[p.type] || { count: 0, bonus: 0, color: tt.color, name: tt.name };
+    perType[p.type] = perType[p.type] || { count: 0, bonus: 0, color: tt.color, name: tt.name, glyph: tt.glyph };
     perType[p.type].count += 1;
     perType[p.type].bonus += scoreData?.perItem[p.id]?.bonus ?? 0;
   }
@@ -1195,14 +1196,19 @@ function ScorePanel({
                   >
                     <div
                       style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 2,
-                        background: info.color,
-                        boxShadow: isHl ? `0 0 8px 2px color-mix(in oklab, ${info.color} 33%, transparent)` : "none",
-                        transition: "box-shadow 160ms",
+                        width: 14,
+                        height: 14,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        filter: isHl
+                          ? `drop-shadow(0 0 6px color-mix(in oklab, ${info.color} 50%, transparent))`
+                          : "none",
+                        transition: "filter 160ms",
                       }}
-                    />
+                    >
+                      <Glyph kind={info.glyph} style={iconStyle || "solid"} color={info.color} w={1} h={1} />
+                    </div>
                     <div style={{ font: "12px/1 Inter, sans-serif", color: fg }}>
                       {info.name} <span style={{ color: fgFaint }}>×{info.count}</span>
                     </div>
@@ -1533,12 +1539,12 @@ const OutlineIcon = () => (
   </svg>
 );
 
+// Show Edges: two connected nodes joined by a clear solid line.
 const EdgesIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <rect x="2.5" y="2.5" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
-    <rect x="8.5" y="8.5" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
-    <line x1="7.5" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1.4" />
-    <line x1="5" y1="7.5" x2="5" y2="9" stroke="currentColor" strokeWidth="1.4" />
+    <line x1="4.2" y1="4.2" x2="11.8" y2="11.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="4.2" cy="4.2" r="2.3" fill="currentColor" />
+    <circle cx="11.8" cy="11.8" r="2.3" fill="currentColor" />
   </svg>
 );
 
@@ -1553,13 +1559,23 @@ const GraphIcon = () => (
   </svg>
 );
 
-// Edges-on-focus: two nodes with a faint dashed link (connections only appear
-// when an object is hovered/selected).
+// Hide Edges: two nodes whose connecting edge is struck through — the link is off.
 const EdgesHoverIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <rect x="2.5" y="2.5" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
-    <rect x="8.5" y="8.5" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
-    <line x1="7" y1="7" x2="9" y2="9" stroke="currentColor" strokeWidth="1.2" strokeDasharray="1.4 1.4" opacity="0.5" />
+    <line
+      x1="4.2"
+      y1="4.2"
+      x2="11.8"
+      y2="11.8"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      opacity="0.3"
+      strokeDasharray="2 1.8"
+    />
+    <circle cx="4.2" cy="4.2" r="2.3" fill="currentColor" opacity="0.85" />
+    <circle cx="11.8" cy="11.8" r="2.3" fill="currentColor" opacity="0.85" />
+    <line x1="12.6" y1="3.4" x2="3.4" y2="12.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
   </svg>
 );
 
@@ -1590,7 +1606,7 @@ function InlineTweaks({ t, setTweak, theme }) {
         onChange={v => setTweak("theme", v)}
         options={[
           { value: "dark", icon: <Moon />, title: "Dark" },
-          { value: "warm", icon: <Sun />, title: "Warm" },
+          { value: "warm", icon: <Sun />, title: "Light" },
         ]}
       />
       <ToggleGroup
@@ -1609,8 +1625,8 @@ function InlineTweaks({ t, setTweak, theme }) {
         value={t.vizMode === "focus" ? "focus" : "edges"}
         onChange={v => setTweak("vizMode", v)}
         options={[
-          { value: "edges", icon: <EdgesIcon />, title: "Always show edges" },
-          { value: "focus", icon: <EdgesHoverIcon />, title: "Hide edges — show only on hover / select" },
+          { value: "edges", icon: <EdgesIcon />, title: "Show Edges" },
+          { value: "focus", icon: <EdgesHoverIcon />, title: "Hide Edges" },
         ]}
       />
     </div>

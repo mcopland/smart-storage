@@ -247,8 +247,8 @@ function useTweaks(defaults) {
 }
 
 const TWEAK_DEFAULTS = {
-  "theme": "dark",
-  "vizMode": "edges",
+  "theme": "warm",
+  "vizMode": "focus",
   "zoom": 100,
   "iconStyle": "solid",
   "trayLayout": "drawer"
@@ -263,6 +263,7 @@ function App() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedTypeId, setSelectedTypeId] = useState(null);
   const [highlightedTypeId, setHighlightedTypeId] = useState(null);
+  const [hoveredId, setHoveredId] = useState(null);
   const [draggingFromTray, setDraggingFromTray] = useState(null);
   const [optimizing, setOptimizing] = useState(false);
   const [disabledCells, setDisabledCells] = useState(new Set());
@@ -775,7 +776,9 @@ function App() {
                 disabledCells={disabledCells}
                 toggleDisabledCell={toggleDisabledCell}
                 highlightedTypeId={highlightedTypeId}
-                onHoverTypeId={setHighlightedTypeId} />
+                onHoverTypeId={setHighlightedTypeId}
+                hoveredId={hoveredId}
+                onHoverPlacement={setHoveredId} />
               
             </div>
           </PannableContainer>
@@ -805,6 +808,7 @@ function App() {
             selectedIds={selectedIds}
             selectedTypeId={selectedTypeId}
             theme={t.theme}
+            iconStyle={t.iconStyle}
             optimizing={optimizing}
             onImport={onImport}
             onExport={onExport}
