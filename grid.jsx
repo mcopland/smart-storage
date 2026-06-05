@@ -2,27 +2,49 @@
 
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
-// Pick the most "central" cell in a shape: maximize neighbors in shape, tiebreak by distance to centroid.
+// Pick the cell on which to anchor the glyph: take every active tile, find the
+// center of mass of that whole selection, then snap to the active tile whose
+// center is closest to it — i.e. the centermost available tile. This works for any
+// footprint, including hollow rings and disconnected/symmetric clusters where the
+// true center may be an empty cell. Ties (several equidistant tiles, e.g. the four
+// inner tiles of an even ring) are broken toward the most-embedded tile, then
+// top-left, so the choice is deterministic.
 function pickGlyphCell(shapeCells) {
   if (shapeCells.length === 0) return [0, 0];
   if (shapeCells.length === 1) return shapeCells[0];
   const set = new Set(shapeCells.map(([x, y]) => `${x},${y}`));
-  const cx = shapeCells.reduce((s, c) => s + c[0], 0) / shapeCells.length;
-  const cy = shapeCells.reduce((s, c) => s + c[1], 0) / shapeCells.length;
+  // Center of mass of all active tiles (using tile centers).
+  const cx = shapeCells.reduce((s, c) => s + c[0] + 0.5, 0) / shapeCells.length;
+  const cy = shapeCells.reduce((s, c) => s + c[1] + 0.5, 0) / shapeCells.length;
+  const neighbors = (x, y) =>
+    (set.has(`${x + 1},${y}`) ? 1 : 0) +
+    (set.has(`${x - 1},${y}`) ? 1 : 0) +
+    (set.has(`${x},${y + 1}`) ? 1 : 0) +
+    (set.has(`${x},${y - 1}`) ? 1 : 0);
   let best = shapeCells[0];
-  let bestNeighbors = -1;
-  let bestDist = Infinity;
+  let bestD = Infinity,
+    bestN = -1,
+    bestY = Infinity,
+    bestX = Infinity;
   for (const [x, y] of shapeCells) {
-    let n = 0;
-    if (set.has(`${x + 1},${y}`)) n++;
-    if (set.has(`${x - 1},${y}`)) n++;
-    if (set.has(`${x},${y + 1}`)) n++;
-    if (set.has(`${x},${y - 1}`)) n++;
     const d = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
-    if (n > bestNeighbors || (n === bestNeighbors && d < bestDist)) {
+    const n = neighbors(x, y);
+    const better =
+      d < bestD - 1e-9
+        ? true
+        : d > bestD + 1e-9
+          ? false
+          : n !== bestN
+            ? n > bestN
+            : y !== bestY
+              ? y < bestY
+              : x < bestX;
+    if (better) {
       best = [x, y];
-      bestNeighbors = n;
-      bestDist = d;
+      bestD = d;
+      bestN = n;
+      bestY = y;
+      bestX = x;
     }
   }
   return best;
