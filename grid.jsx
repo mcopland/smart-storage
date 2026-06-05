@@ -2,7 +2,13 @@
 
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
-// Pick the most "central" cell in a shape: maximize neighbors in shape, tiebreak by distance to centroid.
+// Pick the cell on which to anchor the glyph: take every active tile, find the
+// center of mass of that whole selection, then snap to the active tile whose
+// center is closest to it — i.e. the centermost available tile. This works for any
+// footprint, including hollow rings and disconnected/symmetric clusters where the
+// true center may be an empty cell. Ties (several equidistant tiles, e.g. the four
+// inner tiles of an even ring) are broken toward the most-embedded tile, then
+// top-left, so the choice is deterministic.
 function pickGlyphCell(shapeCells) {
   if (shapeCells.length === 0) return [0, 0];
   if (shapeCells.length === 1) return shapeCells[0];
