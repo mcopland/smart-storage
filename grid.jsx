@@ -216,25 +216,26 @@ function PlacedItem({
 
   return (
     <div
-      onPointerDown={e => onPointerDown(e, p)}
-      onPointerEnter={() => onHoverEnter && onHoverEnter(p.type)}
-      onPointerLeave={() => onHoverLeave && onHoverLeave()}
-      title={t.name}
       style={{
         position: "absolute",
         left,
         top,
         width: totalW,
         height: totalH,
-        cursor: "grab",
         userSelect: "none",
         touchAction: "none",
         filter: filters.length ? filters.join(" ") : "none",
         opacity: itemOpacity,
         transition: "filter 160ms ease, opacity 160ms ease",
+        // The wrapper spans the shape's full bounding box, which for a non-rectangular
+        // polyomino includes empty cells. Make the wrapper itself transparent to the
+        // pointer so those empty cells don't swallow clicks/hovers meant for a smaller
+        // shape sitting beneath them — interactivity lives on the filled path below.
+        pointerEvents: "none",
       }}
     >
-      {/* Single continuous shape: outline + fill traced from the polyomino perimeter */}
+      {/* Single continuous shape: outline + fill traced from the polyomino perimeter.
+          Pointer handlers sit on the path so only the filled cells are interactive. */}
       <svg
         width={totalW}
         height={totalH}
@@ -246,7 +247,13 @@ function PlacedItem({
           stroke={borderCol}
           strokeWidth={1}
           strokeLinejoin="round"
-        />
+          onPointerDown={e => onPointerDown(e, p)}
+          onPointerEnter={() => onHoverEnter && onHoverEnter(p.type)}
+          onPointerLeave={() => onHoverLeave && onHoverLeave()}
+          style={{ pointerEvents: "auto", cursor: "grab" }}
+        >
+          <title>{t.name}</title>
+        </path>
       </svg>
       {/* Glyph overlay — centered in the most-central tile of the shape (gap-aware) */}
       {(() => {

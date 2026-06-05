@@ -294,6 +294,13 @@ function App() {
     setInventory((prev) => ({ ...prev, [newType.id]: (prev[newType.id] ?? 0) + count }));
   }, []);
 
+  // Set the available stock (inventory count) for a type — lets the user restock
+  // an object that's fully placed so they can create more instances of it.
+  const onSetStock = useCallback((typeId, n) => {
+    if (!typeId) return;
+    setInventory((prev) => ({ ...prev, [typeId]: Math.max(0, Math.min(999, Math.round(n))) }));
+  }, []);
+
   const onSaveShape = useCallback((id, newCells) => {
     // Check if any existing placements of this type would collide with the new shape
     const affected = placements.filter((p) => p.type === id);
@@ -533,7 +540,6 @@ function App() {
   // first free spot it fits (any rotation). Mirrors the per-type half of Place all.
   const onAddItem = useCallback(() => {
     if (!selectedTypeId) return;
-    if ((inventory[selectedTypeId] ?? 0) <= 0) return;
     let chosen = null;
     outer: for (let y = 0; y < gridH; y++) {
       for (let x = 0; x < gridW; x++) {
@@ -543,9 +549,13 @@ function App() {
         }
       }
     }
-    if (!chosen) return;
+    if (!chosen) return; // grid is full — nowhere to put it
     setPlacements([...placements, chosen]);
-    setInventory({ ...inventory, [selectedTypeId]: Math.max(0, (inventory[selectedTypeId] ?? 0) - 1) });
+    // If there's stock available, consume one. If the object is fully placed
+    // (stock 0), Add still works: it mints a new instance, so the total count
+    // of this object grows and stock stays at 0 (created + immediately placed).
+    const cur = inventory[selectedTypeId] ?? 0;
+    if (cur > 0) setInventory({ ...inventory, [selectedTypeId]: cur - 1 });
   }, [selectedTypeId, inventory, placements, gridW, gridH, disabledCells]);
 
   // Place every remaining inventory item onto the first free spot it fits.
@@ -806,7 +816,9 @@ function App() {
             onEditShape={(tt) => setShapeEditorTarget(tt)}
             onSelectType={onSelectTrayType}
             highlightedTypeId={highlightedTypeId}
-            onHoverTypeId={setHighlightedTypeId} />
+            onHoverTypeId={setHighlightedTypeId}
+            inventory={inventory}
+            onSetStock={onSetStock} />
           
         </aside>
       </main>
