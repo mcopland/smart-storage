@@ -1673,6 +1673,22 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
     }
   }, [open, onClose]);
 
+  // Click-and-drag painting hooks — must run before any early return so hook
+  // order stays stable whether the modal is open or closed.
+  const paintMode = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const stop = () => {
+      paintMode.current = null;
+    };
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [open]);
+
   if (!open) return null;
 
   const inputStyle = {
@@ -1693,14 +1709,30 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
     marginBottom: 4,
   };
 
-  const toggleCell = (cx, cy) => {
-    const exists = cells.some(([x, y]) => x === cx && y === cy);
-    if (exists) {
-      const next = cells.filter(([x, y]) => !(x === cx && y === cy));
-      if (next.length > 0) setCells(next);
-    } else {
-      setCells([...cells, [cx, cy]]);
-    }
+  const setCellActive = (cx, cy, active) => {
+    setCells(prev => {
+      const exists = prev.some(([x, y]) => x === cx && y === cy);
+      if (active) return exists ? prev : [...prev, [cx, cy]];
+      if (!exists) return prev;
+      const next = prev.filter(([x, y]) => !(x === cx && y === cy));
+      return next.length > 0 ? next : prev; // keep at least one cell
+    });
+  };
+
+  const onCellPointerDown = (e, cx, cy) => {
+    e.preventDefault();
+    // Release implicit pointer capture so pointerenter fires on sibling cells as we drag.
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    const isActive = cells.some(([x, y]) => x === cx && y === cy);
+    paintMode.current = isActive ? "erase" : "paint";
+    setCellActive(cx, cy, paintMode.current === "paint");
+  };
+
+  const onCellPointerEnter = (cx, cy) => {
+    if (!paintMode.current) return;
+    setCellActive(cx, cy, paintMode.current === "paint");
   };
 
   const submit = () => {
@@ -1783,6 +1815,8 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
               gridTemplateColumns: `repeat(${gridSize}, ${cellSize}px)`,
               gap: gap,
               justifyContent: "center",
+              touchAction: "none",
+              userSelect: "none",
             }}
           >
             {Array.from({ length: gridSize * gridSize }, (_, i) => {
@@ -1792,7 +1826,7 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
               return (
                 <button
                   key={i}
-                  onClick={() => toggleCell(cx, cy)}
+                  onPointerDown={e => onCellPointerDown(e, cx, cy)}
                   style={{
                     width: cellSize,
                     height: cellSize,
@@ -1804,9 +1838,11 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
                     cursor: "pointer",
                     transition: "all 140ms ease",
                     position: "relative",
+                    touchAction: "none",
                   }}
                   onPointerEnter={e => {
-                    if (!isActive && assignedCombo) {
+                    onCellPointerEnter(cx, cy);
+                    if (!paintMode.current && !isActive && assignedCombo) {
                       e.currentTarget.style.borderColor = assignedCombo.color;
                       e.currentTarget.style.background = `color-mix(in oklab, ${assignedCombo.color} 7%, transparent)`;
                     }
@@ -2102,17 +2138,48 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Click-and-drag painting hooks — must run before any early return so hook
+  // order stays stable whether the modal is open or closed.
+  const paintMode = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const stop = () => {
+      paintMode.current = null;
+    };
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [open]);
+
   if (!open || !itemType) return null;
 
-  const toggleCell = (cx, cy) => {
-    const key = `${cx},${cy}`;
-    const exists = cells.some(([x, y]) => x === cx && y === cy);
-    if (exists) {
-      const next = cells.filter(([x, y]) => !(x === cx && y === cy));
-      if (next.length > 0) setCells(next);
-    } else {
-      setCells([...cells, [cx, cy]]);
-    }
+  const setCellActive = (cx, cy, active) => {
+    setCells(prev => {
+      const exists = prev.some(([x, y]) => x === cx && y === cy);
+      if (active) return exists ? prev : [...prev, [cx, cy]];
+      if (!exists) return prev;
+      const next = prev.filter(([x, y]) => !(x === cx && y === cy));
+      return next.length > 0 ? next : prev; // keep at least one cell
+    });
+  };
+
+  const onCellPointerDown = (e, cx, cy) => {
+    e.preventDefault();
+    // Release implicit pointer capture so pointerenter fires on sibling cells as we drag.
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    const isActive = cells.some(([x, y]) => x === cx && y === cy);
+    paintMode.current = isActive ? "erase" : "paint";
+    setCellActive(cx, cy, paintMode.current === "paint");
+  };
+
+  const onCellPointerEnter = (cx, cy) => {
+    if (!paintMode.current) return;
+    setCellActive(cx, cy, paintMode.current === "paint");
   };
 
   const handleSave = () => {
@@ -2157,7 +2224,9 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
           <div style={{ font: "600 15px/1.3 Inter, sans-serif", color: fg, marginBottom: 4 }}>
             Edit Shape: {itemType.name}
           </div>
-          <div style={{ font: "11.5px/1.4 Inter, sans-serif", color: fgDim }}>Click tiles to enable/disable cells</div>
+          <div style={{ font: "11.5px/1.4 Inter, sans-serif", color: fgDim }}>
+            Click or drag across tiles to paint the shape
+          </div>
         </div>
 
         {/* 5×5 grid */}
@@ -2168,6 +2237,8 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
             gap: gap,
             marginBottom: 20,
             justifyContent: "center",
+            touchAction: "none",
+            userSelect: "none",
           }}
         >
           {Array.from({ length: gridSize * gridSize }, (_, i) => {
@@ -2177,7 +2248,7 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
             return (
               <button
                 key={i}
-                onClick={() => toggleCell(cx, cy)}
+                onPointerDown={e => onCellPointerDown(e, cx, cy)}
                 style={{
                   width: cellSize,
                   height: cellSize,
@@ -2187,9 +2258,11 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
                   cursor: "pointer",
                   transition: "all 140ms ease",
                   position: "relative",
+                  touchAction: "none",
                 }}
                 onPointerEnter={e => {
-                  if (!isActive) {
+                  onCellPointerEnter(cx, cy);
+                  if (!paintMode.current && !isActive) {
                     e.currentTarget.style.borderColor = itemType.color;
                     e.currentTarget.style.background = `color-mix(in oklab, ${itemType.color} 7%, transparent)`;
                   }
