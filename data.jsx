@@ -47,9 +47,10 @@ const DEFAULT_CELLS_FOR_GLYPH = {
 
 const MAX_OBJECT_TYPES = PREDEFINED_COLORS.length * PREDEFINED_GLYPHS.length; // 64
 
-// Objects carry `tags` (what they ARE) and `synergies` (tag-based rules: gain or
-// lose points when adjacent to objects carrying a given tag). There is no base
-// score — an object's score is purely the sum of its synergy connections.
+// Objects carry `tags` (what they ARE) and `synergies` (tag-based rules: each is
+// simply positive (bonus) or negative (penalty) toward objects carrying a given
+// tag). There is no base score — an object's score is purely the sum of its
+// synergy connections, each worth +1 or -1.
 const ITEM_TYPES = [
   {
     id: "core",
@@ -59,8 +60,8 @@ const ITEM_TYPES = [
     desc: "Foundation unit. Strong clustered with power and signal.",
     tags: ["Power", "Core"],
     synergies: [
-      { tag: "Core", value: 4 },
-      { tag: "Signal", value: 2 },
+      { tag: "Core", positive: true },
+      { tag: "Signal", positive: true },
     ],
     cells: [[0, 0]],
   },
@@ -72,8 +73,8 @@ const ITEM_TYPES = [
     desc: "Amplifies neighbors. Best between power and links.",
     tags: ["Signal"],
     synergies: [
-      { tag: "Power", value: 3 },
-      { tag: "Link", value: 3 },
+      { tag: "Power", positive: true },
+      { tag: "Link", positive: true },
     ],
     cells: [[0, 0]],
   },
@@ -85,8 +86,8 @@ const ITEM_TYPES = [
     desc: "L-shaped link. Pairs well with signal and storage.",
     tags: ["Signal", "Link"],
     synergies: [
-      { tag: "Signal", value: 4 },
-      { tag: "Storage", value: 2 },
+      { tag: "Signal", positive: true },
+      { tag: "Storage", positive: true },
     ],
     cells: [
       [0, 0],
@@ -102,9 +103,9 @@ const ITEM_TYPES = [
     desc: "T-shaped storage. Penalty next to other storage.",
     tags: ["Storage"],
     synergies: [
-      { tag: "Link", value: 4 },
-      { tag: "Power", value: 2 },
-      { tag: "Storage", value: -3 },
+      { tag: "Link", positive: true },
+      { tag: "Power", positive: true },
+      { tag: "Storage", positive: false },
     ],
     cells: [
       [0, 0],
@@ -121,9 +122,9 @@ const ITEM_TYPES = [
     desc: "Cheap. Bonus near most things, crowds badly with itself.",
     tags: ["Signal", "Sensor"],
     synergies: [
-      { tag: "Power", value: 2 },
-      { tag: "Storage", value: 3 },
-      { tag: "Sensor", value: -1 },
+      { tag: "Power", positive: true },
+      { tag: "Storage", positive: true },
+      { tag: "Sensor", positive: false },
     ],
     cells: [[0, 0]],
   },
@@ -135,8 +136,8 @@ const ITEM_TYPES = [
     desc: "Defensive L-shape. Boosts storage and power.",
     tags: ["Defense"],
     synergies: [
-      { tag: "Storage", value: 4 },
-      { tag: "Power", value: 3 },
+      { tag: "Storage", positive: true },
+      { tag: "Power", positive: true },
     ],
     cells: [
       [0, 0],
@@ -340,8 +341,9 @@ function adjacent(a, b) {
   return false;
 }
 
-// Points `fromType` gains for being adjacent to `toType`: sum of fromType's
-// synergy rules whose tag appears in toType's tags. Values may be negative.
+// Points `fromType` gains for being adjacent to `toType`: each of fromType's
+// synergy rules whose tag appears in toType's tags contributes +1 (positive) or
+// -1 (negative).
 function tagSynergy(fromType, toType) {
   if (!fromType || !toType || !Array.isArray(fromType.synergies)) return 0;
   const tags = toType.tags;
@@ -349,7 +351,7 @@ function tagSynergy(fromType, toType) {
   const tagSet = new Set(tags);
   let sum = 0;
   for (const s of fromType.synergies) {
-    if (s && s.tag && tagSet.has(s.tag)) sum += Number(s.value) || 0;
+    if (s && s.tag && tagSet.has(s.tag)) sum += s.positive === false ? -1 : 1;
   }
   return sum;
 }

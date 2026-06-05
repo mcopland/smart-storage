@@ -545,7 +545,7 @@ function TagChips({ tags, onChange, theme, color, suggestions }) {
 }
 
 // ---- Synergy rules — blank slate + "Add Synergy". Each rule is a tag the object
-// reacts to, plus a positive (bonus) or negative (penalty) value. ----
+// reacts to, set to positive (bonus) or negative (penalty). ----
 function SynergyRules({ synergies, onChange, theme, suggestions }) {
   const isWarm = theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
@@ -559,7 +559,7 @@ function SynergyRules({ synergies, onChange, theme, suggestions }) {
 
   const setRule = (i, patch) => onChange(rules.map((r, k) => (k === i ? { ...r, ...patch } : r)));
   const removeRule = i => onChange(rules.filter((_, k) => k !== i));
-  const addRule = () => onChange([...rules, { tag: "", value: 2 }]);
+  const addRule = () => onChange([...rules, { tag: "", positive: true }]);
 
   const dlId = React.useId ? React.useId() : "synsug";
   const fieldBase = {
@@ -595,11 +595,11 @@ function SynergyRules({ synergies, onChange, theme, suggestions }) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
           {rules.map((r, i) => {
-            const positive = (Number(r.value) || 0) >= 0;
+            const positive = r.positive !== false;
             return (
               <div
                 key={i}
-                style={{ display: "grid", gridTemplateColumns: "1fr 54px 22px", gap: 6, alignItems: "center" }}
+                style={{ display: "grid", gridTemplateColumns: "1fr 86px 22px", gap: 6, alignItems: "center" }}
               >
                 <input
                   value={r.tag}
@@ -608,18 +608,23 @@ function SynergyRules({ synergies, onChange, theme, suggestions }) {
                   onChange={e => setRule(i, { tag: e.target.value })}
                   style={{ ...fieldBase, padding: "5px 8px", font: "500 11.5px/1.2 Inter, sans-serif" }}
                 />
-                <NumberField
-                  value={r.value}
-                  allowNegative
-                  onCommit={n => setRule(i, { value: n })}
+                <button
+                  onClick={() => setRule(i, { positive: !positive })}
+                  title={positive ? "Bonus — click to make penalty" : "Penalty — click to make bonus"}
                   style={{
                     ...fieldBase,
                     padding: "5px 6px",
-                    textAlign: "right",
+                    cursor: "pointer",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
                     color: positive ? accent : danger,
                     borderColor: `color-mix(in oklab, ${positive ? accent : danger} 40%, ${border})`,
                   }}
-                />
+                >
+                  {positive ? "+ bonus" : "− penalty"}
+                </button>
                 <button
                   onClick={() => removeRule(i)}
                   title="Remove synergy"
