@@ -422,34 +422,26 @@ function App() {
     return () => {clearTimeout(timer);document.removeEventListener('click', onClick);};
   }, [selectedIds]);
 
-  // Safe grid resize — prevents shrinking if any placement would be removed
+  // Safe grid resize — compacts placements toward the shrinking edge so empty
+  // space on either side can be reclaimed; only blocks if the occupied span
+  // genuinely can't fit the requested size.
   const onSafeResizeW = useCallback((newW) => {
     const w = Math.max(2, Math.min(20, newW));
-    if (!allPlacementsFit(placements, w, gridH)) return;
+    const res = resizeFit(placements, disabledCells, w, gridH);
+    if (!res) return;
+    setPlacements(res.placements);
+    setDisabledCells(res.disabled);
     setGridSize((prev) => ({ ...prev, w }));
-    setDisabledCells((prev) => {
-      const next = new Set();
-      for (const k of prev) {
-        const [cx] = k.split(',').map(Number);
-        if (cx < w) next.add(k);
-      }
-      return next;
-    });
-  }, [placements, gridH]);
+  }, [placements, disabledCells, gridH]);
 
   const onSafeResizeH = useCallback((newH) => {
     const h = Math.max(2, Math.min(20, newH));
-    if (!allPlacementsFit(placements, gridW, h)) return;
+    const res = resizeFit(placements, disabledCells, gridW, h);
+    if (!res) return;
+    setPlacements(res.placements);
+    setDisabledCells(res.disabled);
     setGridSize((prev) => ({ ...prev, h }));
-    setDisabledCells((prev) => {
-      const next = new Set();
-      for (const k of prev) {
-        const [, cy] = k.split(',').map(Number);
-        if (cy < h) next.add(k);
-      }
-      return next;
-    });
-  }, [placements, gridW]);
+  }, [placements, disabledCells, gridW]);
 
   const toggleDisabledCell = (cx, cy) => {
     const key = `${cx},${cy}`;
