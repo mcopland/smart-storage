@@ -1429,6 +1429,16 @@ const GraphIcon = () => (
   </svg>
 );
 
+// Edges-on-focus: two nodes with a faint dashed link (connections only appear
+// when an object is hovered/selected).
+const EdgesHoverIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+    <rect x="2.5" y="2.5" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
+    <rect x="8.5" y="8.5" width="5" height="5" stroke="currentColor" strokeWidth="1.4" />
+    <line x1="7" y1="7" x2="9" y2="9" stroke="currentColor" strokeWidth="1.2" strokeDasharray="1.4 1.4" opacity="0.5" />
+  </svg>
+);
+
 // Highlight-style icons: a ringed shape (halo) vs. one solid shape among faded ones (dim)
 const HaloIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -1471,12 +1481,12 @@ function InlineTweaks({ t, setTweak, theme }) {
       />
       <ToggleGroup
         theme={theme}
-        title="Bonus visualization"
-        value={t.vizMode === "aura" ? "lines" : t.vizMode}
+        title="Connecting edges"
+        value={t.vizMode === "focus" ? "focus" : "edges"}
         onChange={v => setTweak("vizMode", v)}
         options={[
-          { value: "edges", icon: <EdgesIcon />, title: "Edges" },
-          { value: "lines", icon: <GraphIcon />, title: "Graph" },
+          { value: "edges", icon: <EdgesIcon />, title: "Always show edges" },
+          { value: "focus", icon: <EdgesHoverIcon />, title: "Hide edges — show only on hover / select" },
         ]}
       />
     </div>

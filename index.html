@@ -248,7 +248,7 @@ function useTweaks(defaults) {
 
 const TWEAK_DEFAULTS = {
   "theme": "dark",
-  "vizMode": "lines",
+  "vizMode": "edges",
   "zoom": 100,
   "iconStyle": "solid",
   "trayLayout": "drawer"
@@ -273,7 +273,7 @@ function App() {
   const [shapeConflict, setShapeConflict] = useState(null);
 
   useEffect(() => {
-    if (t.vizMode === 'aura') setTweak('vizMode', 'lines');
+    if (t.vizMode === 'aura' || t.vizMode === 'lines') setTweak('vizMode', 'edges');
     if (t.theme === 'mono') setTweak('theme', 'dark');
     if (t.iconStyle === 'dot') setTweak('iconStyle', 'solid');
   }, []);

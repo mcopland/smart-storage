@@ -338,8 +338,12 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
       height={totalH}
       style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", overflow: "visible" }}
     >
-      {mode === "edges" &&
+      {(mode === "edges" || mode === "focus") &&
         adjPairs.map((pair, i) => {
+          const sel = touchesFocus(pair);
+          // In "focus" mode the edges stay hidden until an object is hovered/selected,
+          // and then only the edges touching the focused object(s) are drawn.
+          if (mode === "focus" && !sel) return null;
           const ca = glyphCenter(pair.a),
             cb = glyphCenter(pair.b);
           const colorA = ITEM_BY_ID[pair.a.type].color;
@@ -348,7 +352,6 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
           const gradId = `edge-grad-${i}`;
           // Blend both endpoints' colors along the line (penalty still shown via dashes).
           const stroke = `url(#${gradId})`;
-          const sel = touchesFocus(pair);
           const dim = hasFocus && !sel;
           const haloW = sel ? 9 : 6;
           const haloOp = dim ? 0.05 : sel ? 0.34 : 0.18;
@@ -737,7 +740,7 @@ function GridSurface({
       ))}
 
       {/* Viz overlay over items */}
-      {(vizMode === "edges" || vizMode === "lines") && (
+      {(vizMode === "edges" || vizMode === "focus" || vizMode === "lines") && (
         <VizOverlay
           placements={placements}
           cell={cell}
