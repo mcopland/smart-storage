@@ -247,8 +247,8 @@ function useTweaks(defaults) {
 }
 
 const TWEAK_DEFAULTS = {
-  "theme": "dark",
-  "vizMode": "edges",
+  "theme": "warm",
+  "vizMode": "focus",
   "zoom": 100,
   "iconStyle": "solid",
   "trayLayout": "drawer"
@@ -808,6 +808,7 @@ function App() {
             selectedIds={selectedIds}
             selectedTypeId={selectedTypeId}
             theme={t.theme}
+            iconStyle={t.iconStyle}
             optimizing={optimizing}
             onImport={onImport}
             onExport={onExport}
