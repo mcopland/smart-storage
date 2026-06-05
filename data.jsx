@@ -415,6 +415,49 @@ function allPlacementsFit(placements, w, h) {
   return true;
 }
 
+// Resize the grid to newW × newH, compacting placements toward the origin only
+// as much as needed so a shrink can reclaim empty space on EITHER side. The grid
+// always retracts from the right/bottom edges, so without this a shrink is blocked
+// whenever something sits against the far edge even if there's slack on the near
+// edge. We compute the occupied bounding box and shift everything left/up just
+// enough that the far edge fits — never more, so a shrink that already has slack
+// on the right/bottom doesn't move anything. Disabled cells shift with the
+// placements (and drop if they fall outside). Returns null if the occupied span
+// itself is wider/taller than the requested size (a true impossible shrink).
+function resizeFit(placements, disabledCells, newW, newH) {
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity;
+  for (const p of placements) {
+    for (const [cx, cy] of cellsOf(p)) {
+      if (cx < minX) minX = cx;
+      if (cx > maxX) maxX = cx;
+      if (cy < minY) minY = cy;
+      if (cy > maxY) maxY = cy;
+    }
+  }
+  const hasItems = maxX >= minX;
+  const occW = hasItems ? maxX - minX + 1 : 0;
+  const occH = hasItems ? maxY - minY + 1 : 0;
+  if (occW > newW || occH > newH) return null; // genuinely too small
+  // Shift left/up only enough to bring the far edge inside the new bounds.
+  // dx ≤ minX is guaranteed since occW ≤ newW, so nothing goes negative.
+  const dx = hasItems ? Math.max(0, maxX - newW + 1) : 0;
+  const dy = hasItems ? Math.max(0, maxY - newH + 1) : 0;
+  const placementsOut = dx || dy ? placements.map(p => ({ ...p, x: p.x - dx, y: p.y - dy })) : placements;
+  const disabledOut = new Set();
+  if (disabledCells) {
+    for (const k of disabledCells) {
+      const [cx, cy] = k.split(",").map(Number);
+      const nx = cx - dx,
+        ny = cy - dy;
+      if (nx >= 0 && ny >= 0 && nx < newW && ny < newH) disabledOut.add(`${nx},${ny}`);
+    }
+  }
+  return { placements: placementsOut, disabled: disabledOut };
+}
+
 Object.assign(window, {
   ITEM_TYPES,
   ITEM_BY_ID,
@@ -433,6 +476,7 @@ Object.assign(window, {
   getShapeCells,
   rotateCells,
   allPlacementsFit,
+  resizeFit,
   getNextAvailableCombo,
   canCreateNewObject,
   MAX_OBJECT_TYPES,

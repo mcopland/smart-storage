@@ -248,7 +248,7 @@ function useTweaks(defaults) {
 
 const TWEAK_DEFAULTS = {
   "theme": "dark",
-  "vizMode": "lines",
+  "vizMode": "edges",
   "zoom": 100,
   "iconStyle": "solid",
   "trayLayout": "drawer"
@@ -273,7 +273,7 @@ function App() {
   const [shapeConflict, setShapeConflict] = useState(null);
 
   useEffect(() => {
-    if (t.vizMode === 'aura') setTweak('vizMode', 'lines');
+    if (t.vizMode === 'aura' || t.vizMode === 'lines') setTweak('vizMode', 'edges');
     if (t.theme === 'mono') setTweak('theme', 'dark');
     if (t.iconStyle === 'dot') setTweak('iconStyle', 'solid');
   }, []);
@@ -397,11 +397,16 @@ function App() {
     setSelectedIds([]);
   }, []);
 
-  // Global click handler: deselect inventory type when clicking outside tray items
+  // Global click handler: deselect inventory type when clicking outside tray items.
+  // The right-hand panel (Composition rows + the editor itself) is exempt, so
+  // clicking a Composition row to open the editor — or clicking inside the editor —
+  // doesn't immediately clear the selection.
   useEffect(() => {
     if (!selectedTypeId) return;
     const onClick = (e) => {
       if (e.target.closest('[data-tray-item]')) return;
+      if (e.target.closest('[data-tray-panel]')) return;
+      if (e.target.closest('[data-score-panel]')) return;
       setSelectedTypeId(null);
     };
     const timer = setTimeout(() => document.addEventListener('click', onClick), 0);
@@ -422,34 +427,26 @@ function App() {
     return () => {clearTimeout(timer);document.removeEventListener('click', onClick);};
   }, [selectedIds]);
 
-  // Safe grid resize — prevents shrinking if any placement would be removed
+  // Safe grid resize — compacts placements toward the shrinking edge so empty
+  // space on either side can be reclaimed; only blocks if the occupied span
+  // genuinely can't fit the requested size.
   const onSafeResizeW = useCallback((newW) => {
     const w = Math.max(2, Math.min(20, newW));
-    if (!allPlacementsFit(placements, w, gridH)) return;
+    const res = resizeFit(placements, disabledCells, w, gridH);
+    if (!res) return;
+    setPlacements(res.placements);
+    setDisabledCells(res.disabled);
     setGridSize((prev) => ({ ...prev, w }));
-    setDisabledCells((prev) => {
-      const next = new Set();
-      for (const k of prev) {
-        const [cx] = k.split(',').map(Number);
-        if (cx < w) next.add(k);
-      }
-      return next;
-    });
-  }, [placements, gridH]);
+  }, [placements, disabledCells, gridH]);
 
   const onSafeResizeH = useCallback((newH) => {
     const h = Math.max(2, Math.min(20, newH));
-    if (!allPlacementsFit(placements, gridW, h)) return;
+    const res = resizeFit(placements, disabledCells, gridW, h);
+    if (!res) return;
+    setPlacements(res.placements);
+    setDisabledCells(res.disabled);
     setGridSize((prev) => ({ ...prev, h }));
-    setDisabledCells((prev) => {
-      const next = new Set();
-      for (const k of prev) {
-        const [, cy] = k.split(',').map(Number);
-        if (cy < h) next.add(k);
-      }
-      return next;
-    });
-  }, [placements, gridW]);
+  }, [placements, disabledCells, gridW]);
 
   const toggleDisabledCell = (cx, cy) => {
     const key = `${cx},${cy}`;
@@ -531,6 +528,25 @@ function App() {
   };
 
   const onAddNew = () => setNewTypeOpen(true);
+
+  // Place a single instance of the currently selected inventory type onto the
+  // first free spot it fits (any rotation). Mirrors the per-type half of Place all.
+  const onAddItem = useCallback(() => {
+    if (!selectedTypeId) return;
+    if ((inventory[selectedTypeId] ?? 0) <= 0) return;
+    let chosen = null;
+    outer: for (let y = 0; y < gridH; y++) {
+      for (let x = 0; x < gridW; x++) {
+        for (const rot of [0, 90, 180, 270]) {
+          const tryP = { id: 'ai' + Date.now() + Math.floor(Math.random() * 999), type: selectedTypeId, x, y, rot };
+          if (fits(tryP, placements, gridW, gridH, tryP.id, disabledCells)) { chosen = tryP; break outer; }
+        }
+      }
+    }
+    if (!chosen) return;
+    setPlacements([...placements, chosen]);
+    setInventory({ ...inventory, [selectedTypeId]: Math.max(0, (inventory[selectedTypeId] ?? 0) - 1) });
+  }, [selectedTypeId, inventory, placements, gridW, gridH, disabledCells]);
 
   // Place every remaining inventory item onto the first free spot it fits.
   const onPlaceAll = useCallback(() => {
@@ -691,7 +707,7 @@ function App() {
         height: '100%', minHeight: 0
       }}>
         {/* Left tray */}
-        <aside style={{
+        <aside data-tray-panel="" style={{
           borderRight: `1px solid ${border}`,
           background: surfaceSubtle,
           minHeight: 0, minWidth: 0, overflow: 'hidden',
@@ -704,6 +720,7 @@ function App() {
             onSelectType={onSelectTrayType}
             onStartDrag={onTrayDragStart}
             onAddNew={onAddNew}
+            onAddItem={onAddItem}
             onPlaceAll={onPlaceAll}
             theme={t.theme}
             iconStyle={t.iconStyle}
@@ -787,6 +804,7 @@ function App() {
             onUpdateType={onUpdateType}
             onDeleteType={(id) => setDeleteTypeTarget(id)}
             onEditShape={(tt) => setShapeEditorTarget(tt)}
+            onSelectType={onSelectTrayType}
             highlightedTypeId={highlightedTypeId}
             onHoverTypeId={setHighlightedTypeId} />
           
