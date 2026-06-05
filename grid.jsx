@@ -649,6 +649,11 @@ function GridSurface({
         setSelectedIds([dragState.current.clickedId]);
       }
     }
+    // Deselect after an actual drag — the object is highlighted while moving but
+    // shouldn't stay selected once dropped.
+    if (dragState.current?.kind === "move" && dragState.current.moved) {
+      setSelectedIds([]);
+    }
     if (dragState.current?.kind === "marquee") {
       setMarquee(null);
     }

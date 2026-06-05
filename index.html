@@ -397,11 +397,16 @@ function App() {
     setSelectedIds([]);
   }, []);
 
-  // Global click handler: deselect inventory type when clicking outside tray items
+  // Global click handler: deselect inventory type when clicking outside tray items.
+  // The right-hand panel (Composition rows + the editor itself) is exempt, so
+  // clicking a Composition row to open the editor — or clicking inside the editor —
+  // doesn't immediately clear the selection.
   useEffect(() => {
     if (!selectedTypeId) return;
     const onClick = (e) => {
       if (e.target.closest('[data-tray-item]')) return;
+      if (e.target.closest('[data-tray-panel]')) return;
+      if (e.target.closest('[data-score-panel]')) return;
       setSelectedTypeId(null);
     };
     const timer = setTimeout(() => document.addEventListener('click', onClick), 0);
@@ -523,6 +528,25 @@ function App() {
   };
 
   const onAddNew = () => setNewTypeOpen(true);
+
+  // Place a single instance of the currently selected inventory type onto the
+  // first free spot it fits (any rotation). Mirrors the per-type half of Place all.
+  const onAddItem = useCallback(() => {
+    if (!selectedTypeId) return;
+    if ((inventory[selectedTypeId] ?? 0) <= 0) return;
+    let chosen = null;
+    outer: for (let y = 0; y < gridH; y++) {
+      for (let x = 0; x < gridW; x++) {
+        for (const rot of [0, 90, 180, 270]) {
+          const tryP = { id: 'ai' + Date.now() + Math.floor(Math.random() * 999), type: selectedTypeId, x, y, rot };
+          if (fits(tryP, placements, gridW, gridH, tryP.id, disabledCells)) { chosen = tryP; break outer; }
+        }
+      }
+    }
+    if (!chosen) return;
+    setPlacements([...placements, chosen]);
+    setInventory({ ...inventory, [selectedTypeId]: Math.max(0, (inventory[selectedTypeId] ?? 0) - 1) });
+  }, [selectedTypeId, inventory, placements, gridW, gridH, disabledCells]);
 
   // Place every remaining inventory item onto the first free spot it fits.
   const onPlaceAll = useCallback(() => {
@@ -683,7 +707,7 @@ function App() {
         height: '100%', minHeight: 0
       }}>
         {/* Left tray */}
-        <aside style={{
+        <aside data-tray-panel="" style={{
           borderRight: `1px solid ${border}`,
           background: surfaceSubtle,
           minHeight: 0, minWidth: 0, overflow: 'hidden',
@@ -696,6 +720,7 @@ function App() {
             onSelectType={onSelectTrayType}
             onStartDrag={onTrayDragStart}
             onAddNew={onAddNew}
+            onAddItem={onAddItem}
             onPlaceAll={onPlaceAll}
             theme={t.theme}
             iconStyle={t.iconStyle}
@@ -779,6 +804,7 @@ function App() {
             onUpdateType={onUpdateType}
             onDeleteType={(id) => setDeleteTypeTarget(id)}
             onEditShape={(tt) => setShapeEditorTarget(tt)}
+            onSelectType={onSelectTrayType}
             highlightedTypeId={highlightedTypeId}
             onHoverTypeId={setHighlightedTypeId} />
           

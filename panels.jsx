@@ -49,6 +49,7 @@ function Tray({
   onSelectType,
   onStartDrag,
   onAddNew,
+  onAddItem,
   onPlaceAll,
   theme,
   iconStyle,
@@ -262,14 +263,56 @@ function Tray({
           const remaining = itemTypes.reduce((s, tt) => s + Math.max(0, inventory[tt.id] ?? 0), 0);
           const disabled = remaining <= 0;
           const fBorder = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.07)";
+          const selType = selectedTypeId ? itemTypes.find(tt => tt.id === selectedTypeId) : null;
+          const addStock = selType ? Math.max(0, inventory[selType.id] ?? 0) : 0;
+          const addDisabled = !selType || addStock <= 0;
           return (
             <div
               style={{
                 flexShrink: 0,
                 padding: isRail ? "10px 8px" : "12px 16px",
                 borderTop: `1px solid ${fBorder}`,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
               }}
             >
+              <button
+                onClick={onAddItem}
+                disabled={addDisabled}
+                title={
+                  addDisabled
+                    ? selType
+                      ? "None of this object left in stock"
+                      : "Select an inventory object first"
+                    : `Place one ${selType.name} on the workspace`
+                }
+                style={{
+                  width: "100%",
+                  padding: isRail ? "8px 4px" : "9px 12px",
+                  background: addDisabled ? "transparent" : isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)",
+                  border: `1px solid ${addDisabled ? fBorder : accent}`,
+                  borderRadius: 6,
+                  cursor: addDisabled ? "not-allowed" : "pointer",
+                  color: addDisabled ? (isWarm ? "rgba(60,50,40,0.3)" : "rgba(255,255,255,0.25)") : accent,
+                  font: isRail ? '500 9px/1.2 "JetBrains Mono", monospace' : "500 12px/1 Inter, sans-serif",
+                  letterSpacing: isRail ? "0.04em" : "0.01em",
+                  transition: "background 120ms, border-color 120ms",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                onPointerEnter={e => {
+                  if (!addDisabled)
+                    e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.18)" : "rgba(94,234,212,0.14)";
+                }}
+                onPointerLeave={e => {
+                  if (!addDisabled)
+                    e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)";
+                }}
+              >
+                {isRail ? "Add" : selType ? `Add ${selType.name}` : "Add Item"}
+              </button>
               <button
                 onClick={onPlaceAll}
                 disabled={disabled}
@@ -988,6 +1031,7 @@ function ScorePanel({
   onUpdateType,
   onDeleteType,
   onEditShape,
+  onSelectType,
   highlightedTypeId,
   onHoverTypeId,
 }) {
@@ -1053,11 +1097,14 @@ function ScorePanel({
               .sort((a, b) => b[1].bonus - a[1].bonus)
               .map(([id, info]) => {
                 const isHl = highlightedTypeId === id;
+                const isEditing = editingTypeId === id;
                 return (
                   <div
                     key={id}
                     onPointerEnter={() => onHoverTypeId && onHoverTypeId(id)}
                     onPointerLeave={() => onHoverTypeId && onHoverTypeId(null)}
+                    onClick={() => onSelectType && onSelectType(id)}
+                    title={`Edit ${info.name}`}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "14px 1fr auto",
@@ -1067,8 +1114,11 @@ function ScorePanel({
                       padding: "5px 4px",
                       margin: "0 -4px",
                       background: isHl ? `color-mix(in oklab, ${info.color} 12%, transparent)` : "transparent",
-                      transition: "background 120ms",
-                      cursor: "default",
+                      boxShadow: isEditing
+                        ? `inset 0 0 0 1px color-mix(in oklab, ${info.color} 55%, transparent)`
+                        : "none",
+                      transition: "background 120ms, box-shadow 120ms",
+                      cursor: "pointer",
                     }}
                   >
                     <div
