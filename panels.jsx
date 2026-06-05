@@ -66,13 +66,15 @@ function Tray({
   const accent = "oklch(0.78 0.12 195)";
 
   const dragRef = React.useRef(null);
-  const startInteract = (e, type, disabled) => {
-    if (disabled) return;
+  // `canDrag` gates only the drag-to-place gesture (needs stock). A click always
+  // selects the type so an out-of-stock object can still be picked to edit it or
+  // restock it from the panel.
+  const startInteract = (e, type, canDrag) => {
     e.preventDefault();
-    dragRef.current = { id: type.id, startX: e.clientX, startY: e.clientY, started: false, type };
+    dragRef.current = { id: type.id, startX: e.clientX, startY: e.clientY, started: false, type, canDrag };
     const onMove = mv => {
       const d = dragRef.current;
-      if (!d || d.started) return;
+      if (!d || d.started || !d.canDrag) return;
       const dx = mv.clientX - d.startX,
         dy = mv.clientY - d.startY;
       if (dx * dx + dy * dy > 16) {
@@ -135,14 +137,14 @@ function Tray({
             <div
               key={tt.id}
               data-tray-item={tt.id}
-              onPointerDown={e => startInteract(e, tt, disabled)}
+              onPointerDown={e => startInteract(e, tt, !disabled)}
               onPointerEnter={() => {
-                if (!disabled && onHoverTypeId) onHoverTypeId(tt.id);
+                if (onHoverTypeId) onHoverTypeId(tt.id);
               }}
               onPointerLeave={() => {
                 if (onHoverTypeId) onHoverTypeId(null);
               }}
-              title={`${tt.name} — ${numCells} cells${tt.tags && tt.tags.length ? ` · ${tt.tags.join(", ")}` : ""}${disabled ? " (none in stock)" : ""}`}
+              title={`${tt.name} — ${numCells} cells${tt.tags && tt.tags.length ? ` · ${tt.tags.join(", ")}` : ""}${disabled ? " · out of stock (click to edit / restock)" : ""}`}
               style={{
                 position: "relative",
                 width: tileSize,
@@ -156,16 +158,16 @@ function Tray({
                 borderRadius: 8,
                 background: isSel ? (isWarm ? "rgba(94,234,212,0.08)" : "rgba(94,234,212,0.06)") : cellBg,
                 padding: "8px 10px 18px",
-                cursor: disabled ? "not-allowed" : "grab",
-                opacity: disabled ? 0.32 : 1,
+                cursor: disabled ? "pointer" : "grab",
+                opacity: disabled ? 0.5 : 1,
                 touchAction: "none",
-                transition: "border-color 120ms, box-shadow 120ms, background 120ms",
+                transition: "border-color 120ms, box-shadow 120ms, background 120ms, opacity 120ms",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
               onPointerOver={e => {
-                if (!disabled && !isSel) e.currentTarget.style.borderColor = tt.color;
+                if (!isSel) e.currentTarget.style.borderColor = tt.color;
               }}
               onPointerOut={e => {
                 if (!isSel) e.currentTarget.style.borderColor = cellBorder;
@@ -265,7 +267,10 @@ function Tray({
           const fBorder = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.07)";
           const selType = selectedTypeId ? itemTypes.find(tt => tt.id === selectedTypeId) : null;
           const addStock = selType ? Math.max(0, inventory[selType.id] ?? 0) : 0;
-          const addDisabled = !selType || addStock <= 0;
+          // Add only requires a selected object — when stock is 0 it mints a new one,
+          // so the button keeps working for continuous adding.
+          const addDisabled = !selType;
+          const minting = !!selType && addStock <= 0;
           return (
             <div
               style={{
@@ -282,10 +287,10 @@ function Tray({
                 disabled={addDisabled}
                 title={
                   addDisabled
-                    ? selType
-                      ? "None of this object left in stock"
-                      : "Select an inventory object first"
-                    : `Place one ${selType.name} on the workspace`
+                    ? "Select an inventory object first"
+                    : minting
+                      ? `Create and place another ${selType.name}`
+                      : `Place one ${selType.name} on the workspace`
                 }
                 style={{
                   width: "100%",
@@ -311,7 +316,7 @@ function Tray({
                     e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)";
                 }}
               >
-                {isRail ? "Add" : selType ? `Add ${selType.name}` : "Add Item"}
+                {isRail ? "Add" : selType ? (minting ? `Add ${selType.name} +` : `Add ${selType.name}`) : "Add Item"}
               </button>
               <button
                 onClick={onPlaceAll}
@@ -727,8 +732,37 @@ function SynergyRules({ synergies, onChange, theme, suggestions }) {
   );
 }
 
+// ---- Stock stepper button style ----
+function stockStepBtn(theme) {
+  const isWarm = theme === "warm";
+  return {
+    width: 26,
+    height: 26,
+    background: "transparent",
+    border: `1px solid ${isWarm ? "rgba(60,50,40,0.18)" : "rgba(255,255,255,0.12)"}`,
+    borderRadius: 5,
+    color: isWarm ? "#3a2f22" : "rgba(255,255,255,0.85)",
+    font: '500 14px/1 "JetBrains Mono", monospace',
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+  };
+}
+
 // ---- Selected: editable object-definition form ----
-function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDeleteType, onEditShape }) {
+function SelectedEditor({
+  itemType,
+  detail,
+  theme,
+  allTypes,
+  onUpdateType,
+  onDeleteType,
+  onEditShape,
+  stock,
+  onSetStock,
+}) {
   const isWarm = theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
   const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
@@ -791,6 +825,42 @@ function SelectedEditor({ itemType, detail, theme, allTypes, onUpdateType, onDel
           />
         </div>
       </div>
+
+      {onSetStock && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ ...labelStyle, marginBottom: 6 }}>Stock</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                onClick={() => onSetStock(Math.max(0, (stock || 0) - 1))}
+                title="Remove one from stock"
+                style={stockStepBtn(theme)}
+              >
+                −
+              </button>
+              <span
+                style={{
+                  minWidth: 30,
+                  textAlign: "center",
+                  font: '500 13px/1 "JetBrains Mono", monospace',
+                  color: fg,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {stock || 0}
+              </span>
+              <button
+                onClick={() => onSetStock((stock || 0) + 1)}
+                title="Add one to stock — restock this object"
+                style={stockStepBtn(theme)}
+              >
+                +
+              </button>
+            </div>
+            <span style={{ font: "11px/1.4 Inter, sans-serif", color: fgDim }}>available to place</span>
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 14 }}>
         <div style={{ ...labelStyle, marginBottom: 6 }}>Tags</div>
@@ -1034,6 +1104,8 @@ function ScorePanel({
   onSelectType,
   highlightedTypeId,
   onHoverTypeId,
+  inventory,
+  onSetStock,
 }) {
   const isWarm = theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
@@ -1161,6 +1233,8 @@ function ScorePanel({
               allTypes={itemTypes}
               onUpdateType={onUpdateType}
               onDeleteType={onDeleteType}
+              stock={inventory ? (inventory[editingTypeId] ?? 0) : undefined}
+              onSetStock={onSetStock ? n => onSetStock(editingTypeId, n) : undefined}
               onEditShape={onEditShape}
             />
           </PanelSection>
