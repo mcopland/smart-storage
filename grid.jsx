@@ -17,10 +17,10 @@ function pickGlyphCell(shapeCells) {
   const cx = shapeCells.reduce((s, c) => s + c[0] + 0.5, 0) / shapeCells.length;
   const cy = shapeCells.reduce((s, c) => s + c[1] + 0.5, 0) / shapeCells.length;
   const neighbors = (x, y) =>
-    (set.has(`${x + 1},${y}`) ? 1 : 0) +
-    (set.has(`${x - 1},${y}`) ? 1 : 0) +
-    (set.has(`${x},${y + 1}`) ? 1 : 0) +
-    (set.has(`${x},${y - 1}`) ? 1 : 0);
+    (set.has(`${x + 1},${y}`) ? 1 : 0)
+    + (set.has(`${x - 1},${y}`) ? 1 : 0)
+    + (set.has(`${x},${y + 1}`) ? 1 : 0)
+    + (set.has(`${x},${y - 1}`) ? 1 : 0);
   let best = shapeCells[0];
   let bestD = Infinity,
     bestN = -1,
@@ -227,7 +227,8 @@ function PlacedItem({
   let itemOpacity = 1;
   // Strong halo on the focused object — applies in both modes.
   if (selected) filters.push(`drop-shadow(0 0 3px ${glow(95)}) drop-shadow(0 0 8px ${glow(55)})`);
-  else if (highlighted) filters.push(`drop-shadow(0 0 4px ${glow(75)}) drop-shadow(0 0 10px ${glow(35)})`);
+  else if (highlighted)
+    filters.push(`drop-shadow(0 0 4px ${glow(75)}) drop-shadow(0 0 10px ${glow(35)})`);
   // In dim mode, also push the non-focused objects back — but only gently,
   // just enough to make the highlighted shapes read forward without fading out.
   if (highlightStyle === "dim" && focusActive && !isFocused) {
@@ -319,7 +320,17 @@ function PlacedItem({
 }
 
 // ---------- visualization overlays ----------
-function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selectedIds = [], highlightedTypeId = null }) {
+function VizOverlay({
+  placements,
+  cell,
+  gap,
+  gridW,
+  gridH,
+  mode,
+  theme,
+  selectedIds = [],
+  highlightedTypeId = null,
+}) {
   const totalW = gridW * cell + (gridW - 1) * gap;
   const totalH = gridH * cell + (gridH - 1) * gap;
 
@@ -328,9 +339,10 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
   const selSet = new Set(selectedIds);
   const hasFocus = selSet.size > 0 || highlightedTypeId != null;
   const touchesFocus = pair =>
-    selSet.has(pair.a.id) ||
-    selSet.has(pair.b.id) ||
-    (highlightedTypeId != null && (pair.a.type === highlightedTypeId || pair.b.type === highlightedTypeId));
+    selSet.has(pair.a.id)
+    || selSet.has(pair.b.id)
+    || (highlightedTypeId != null
+      && (pair.a.type === highlightedTypeId || pair.b.type === highlightedTypeId));
 
   // Get the center of the glyph cell (gap-aware, matching the rendered glyph box)
   const glyphCenter = p => {
@@ -367,8 +379,8 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
       height={totalH}
       style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", overflow: "visible" }}
     >
-      {(mode === "edges" || mode === "focus") &&
-        adjPairs.map((pair, i) => {
+      {(mode === "edges" || mode === "focus")
+        && adjPairs.map((pair, i) => {
           const sel = touchesFocus(pair);
           // In "focus" mode the edges stay hidden until an object is hovered/selected,
           // and then only the edges touching the focused object(s) are drawn.
@@ -388,7 +400,14 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
           const lineOp = dim ? 0.18 : sel ? 1 : 0.7;
           return (
             <g key={i} style={{ transition: "opacity 160ms ease" }}>
-              <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1={ca.x} y1={ca.y} x2={cb.x} y2={cb.y}>
+              <linearGradient
+                id={gradId}
+                gradientUnits="userSpaceOnUse"
+                x1={ca.x}
+                y1={ca.y}
+                x2={cb.x}
+                y2={cb.y}
+              >
                 <stop offset="0%" stopColor={colorA} />
                 <stop offset="100%" stopColor={colorB} />
               </linearGradient>
@@ -416,8 +435,8 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
             </g>
           );
         })}
-      {mode === "lines" &&
-        adjPairs.map((pair, i) => {
+      {mode === "lines"
+        && adjPairs.map((pair, i) => {
           const ca = glyphCenter(pair.a),
             cb = glyphCenter(pair.b);
           const mx = (ca.x + cb.x) / 2;
@@ -427,7 +446,11 @@ function VizOverlay({ placements, cell, gap, gridW, gridH, mode, theme, selected
           const dim = hasFocus && !sel;
           const stroke = theme === "warm" ? "rgba(60,50,40,0.45)" : "rgba(255,255,255,0.35)";
           const labelBg = theme === "warm" ? "#fbf8f0" : "#0e1116";
-          const labelFg = positive ? (theme === "warm" ? "#3a2f22" : "rgba(255,255,255,0.92)") : "oklch(0.7 0.18 25)";
+          const labelFg = positive
+            ? theme === "warm"
+              ? "#3a2f22"
+              : "rgba(255,255,255,0.92)"
+            : "oklch(0.7 0.18 25)";
           return (
             <g key={i} opacity={dim ? 0.22 : 1} style={{ transition: "opacity 160ms ease" }}>
               <line
@@ -508,7 +531,13 @@ function GridSurface({
     if (!draggingFromTray) return;
     setGhost(g => {
       if (!g) return g;
-      const candidate = { id: "__ghost", type: draggingFromTray.type, x: g.x, y: g.y, rot: draggingFromTray.rot ?? 0 };
+      const candidate = {
+        id: "__ghost",
+        type: draggingFromTray.type,
+        x: g.x,
+        y: g.y,
+        rot: draggingFromTray.rot ?? 0,
+      };
       const valid = fits(candidate, placements, gridW, gridH, "__ghost", disabledCells);
       return { ...candidate, valid };
     });
@@ -565,7 +594,12 @@ function GridSurface({
     // Check if panning is active via data attribute set by PannableContainer
     if (e.currentTarget.closest('[data-panning="true"]')) return;
 
-    if (e.target !== e.currentTarget && e.target.tagName !== "svg" && !e.target.classList?.contains("grid-bg")) return;
+    if (
+      e.target !== e.currentTarget
+      && e.target.tagName !== "svg"
+      && !e.target.classList?.contains("grid-bg")
+    )
+      return;
     if (draggingFromTray) return;
     if (e.altKey && e.target.classList?.contains("grid-bg") && e.target.dataset.cellX != null) {
       const cx = parseInt(e.target.dataset.cellX, 10);
@@ -590,7 +624,13 @@ function GridSurface({
   const onSurfacePointerMove = e => {
     if (draggingFromTray) {
       const { x, y } = cellAt(e.clientX, e.clientY);
-      const candidate = { id: "__ghost", type: draggingFromTray.type, x, y, rot: draggingFromTray.rot ?? 0 };
+      const candidate = {
+        id: "__ghost",
+        type: draggingFromTray.type,
+        x,
+        y,
+        rot: draggingFromTray.rot ?? 0,
+      };
       const valid = fits(candidate, placements, gridW, gridH, "__ghost", disabledCells);
       setGhost({ ...candidate, valid });
       return;
@@ -672,7 +712,11 @@ function GridSurface({
       return;
     }
     // Toggle-deselect: click on already-selected item without dragging
-    if (dragState.current?.kind === "move" && !dragState.current.moved && dragState.current.wasAlreadySelected) {
+    if (
+      dragState.current?.kind === "move"
+      && !dragState.current.moved
+      && dragState.current.wasAlreadySelected
+    ) {
       if (dragState.current.ids.length === 1) {
         setSelectedIds([]);
       } else {
@@ -791,13 +835,17 @@ function GridSurface({
       )}
 
       {/* Ghost from tray */}
-      {ghost &&
-        (() => {
+      {ghost
+        && (() => {
           const t = ITEM_BY_ID[ghost.type];
           const ghostCells = getShapeCells(ghost);
           const [gw, gh] = getDims(ghost);
           const inBounds = ghostCells.every(
-            ([cx, cy]) => ghost.x + cx >= 0 && ghost.y + cy >= 0 && ghost.x + cx < gridW && ghost.y + cy < gridH,
+            ([cx, cy]) =>
+              ghost.x + cx >= 0
+              && ghost.y + cy >= 0
+              && ghost.x + cx < gridW
+              && ghost.y + cy < gridH,
           );
           if (!inBounds) return null;
           const cellSet = new Set(ghostCells.map(([x, y]) => `${x},${y}`));
@@ -817,11 +865,22 @@ function GridSurface({
               <svg
                 width={gw * cell + (gw - 1) * gap}
                 height={gh * cell + (gh - 1) * gap}
-                style={{ position: "absolute", left: 0, top: 0, overflow: "visible", display: "block", opacity: 0.7 }}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  overflow: "visible",
+                  display: "block",
+                  opacity: 0.7,
+                }}
               >
                 <path
                   d={shapeOutlinePath(ghostCells, cell, gap, 6)}
-                  fill={ghost.valid ? `color-mix(in oklab, ${t.color} 12%, transparent)` : "rgba(255,80,80,0.05)"}
+                  fill={
+                    ghost.valid
+                      ? `color-mix(in oklab, ${t.color} 12%, transparent)`
+                      : "rgba(255,80,80,0.05)"
+                  }
                   stroke={ghost.valid ? t.color : "oklch(0.7 0.18 25)"}
                   strokeWidth={1.5}
                   strokeDasharray="5 4"

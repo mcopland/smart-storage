@@ -20,7 +20,13 @@ function Glyph({ kind, style, color, w = 1, h = 1, cell = 56 }) {
         pts.push(`${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`);
       }
       shape = (
-        <polygon points={pts.join(" ")} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
+        <polygon
+          points={pts.join(" ")}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          strokeLinejoin="round"
+        />
       );
       break;
     }
@@ -92,7 +98,9 @@ function Glyph({ kind, style, color, w = 1, h = 1, cell = 56 }) {
       break;
     }
     case "circle": {
-      shape = <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
+      shape = (
+        <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+      );
       break;
     }
     case "pent": {
@@ -121,7 +129,13 @@ function Glyph({ kind, style, color, w = 1, h = 1, cell = 56 }) {
         pts.push(`${cx + r * 0.42 * Math.cos(aInner)},${cy + r * 0.42 * Math.sin(aInner)}`);
       }
       shape = (
-        <polygon points={pts.join(" ")} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
+        <polygon
+          points={pts.join(" ")}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          strokeLinejoin="round"
+        />
       );
       break;
     }
@@ -140,7 +154,9 @@ function Glyph({ kind, style, color, w = 1, h = 1, cell = 56 }) {
       break;
     }
     default:
-      shape = <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
+      shape = (
+        <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+      );
   }
 
   // 'glyph' style = stroked, 'solid' style = filled

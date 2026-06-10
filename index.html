@@ -1,859 +1,1071 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Smart Storage</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  html, body { margin: 0; padding: 0; height: 100%; }
-  body {
-    font-family: Inter, system-ui, -apple-system, sans-serif;
-    background: #0e1116;
-    color: rgba(255,255,255,0.92);
-    -webkit-font-smoothing: antialiased;
-    overflow: hidden;
-  }
-  body.theme-warm { background: #f5f1e8; color: #3a2f22; }
-  * { box-sizing: border-box; }
-  button { font-family: inherit; }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-  body.theme-warm ::-webkit-scrollbar-thumb { background: rgba(60,50,40,0.18); }
-  .logo { display: inline-flex; align-items: baseline; gap: 6px; font-family: Inter, system-ui, sans-serif; letter-spacing: -0.005em; }
-  .logo .l-name { font-weight: 600; font-size: 14px; }
-</style>
-
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-</head>
-<body>
-<div id="root"></div>
-
-<script type="text/babel" src="data.jsx"></script>
-<script type="text/babel" src="glyphs.jsx"></script>
-<script type="text/babel" src="grid.jsx"></script>
-<script type="text/babel" src="panels.jsx"></script>
-
-
-<script type="text/babel">
-// PannableContainer — allows panning when zoomed in
-function PannableContainer({ children, zoom, theme }) {
-  const containerRef = useRef(null);
-  const contentRef = useRef(null);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [spaceHeld, setSpaceHeld] = useState(false);
-  const panState = useRef(null);
-
-  const isZoomed = zoom > 100;
-
-  const onWheel = useCallback((e) => {
-    if (!isZoomed) return;
-    e.preventDefault();
-    setPan((prev) => ({
-      x: prev.x - e.deltaX,
-      y: prev.y - e.deltaY,
-    }));
-  }, [isZoomed]);
-
-  const onPointerDown = useCallback((e) => {
-    if (!isZoomed || !spaceHeld) return;
-    if (e.button === 0) {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsPanning(true);
-      panState.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        panX: pan.x,
-        panY: pan.y,
-        pointerId: e.pointerId,
-      };
-      containerRef.current.setPointerCapture(e.pointerId);
-      // Mark that we're panning
-      if (contentRef.current) {
-        contentRef.current.setAttribute('data-panning', 'true');
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Smart Storage</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
       }
-    }
-  }, [isZoomed, spaceHeld, pan]);
+      body {
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #0e1116;
+        color: rgba(255, 255, 255, 0.92);
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+      }
+      body.theme-warm {
+        background: #f5f1e8;
+        color: #3a2f22;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      button {
+        font-family: inherit;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+      }
+      body.theme-warm ::-webkit-scrollbar-thumb {
+        background: rgba(60, 50, 40, 0.18);
+      }
+      .logo {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
+        font-family: Inter, system-ui, sans-serif;
+        letter-spacing: -0.005em;
+      }
+      .logo .l-name {
+        font-weight: 600;
+        font-size: 14px;
+      }
+    </style>
 
-  const onPointerMove = useCallback((e) => {
-    if (!panState.current) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const dx = e.clientX - panState.current.startX;
-    const dy = e.clientY - panState.current.startY;
-    setPan({
-      x: panState.current.panX + dx,
-      y: panState.current.panY + dy,
-    });
-  }, []);
+    <script
+      src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+      integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+      integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+      integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div id="root"></div>
 
-  const onPointerUp = useCallback((e) => {
-    if (!panState.current) return;
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Remove panning marker
-    if (contentRef.current) {
-      contentRef.current.removeAttribute('data-panning');
-    }
-    
-    panState.current = null;
-    setIsPanning(false);
-    if (containerRef.current) {
-      containerRef.current.releasePointerCapture(e.pointerId);
-    }
-  }, []);
+    <script type="text/babel" src="data.jsx"></script>
+    <script type="text/babel" src="glyphs.jsx"></script>
+    <script type="text/babel" src="grid.jsx"></script>
+    <script type="text/babel" src="panels.jsx"></script>
 
-  // Track spacebar key state
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.code !== 'Space' || e.repeat) return;
-      const el = e.target;
-      const tag = el.tagName;
-      const type = (el.type || '').toLowerCase();
-      const isTextField = tag === 'TEXTAREA' ||
-        (tag === 'INPUT' && ['text', 'number', 'search', 'email', 'url', 'password', 'tel'].includes(type));
-      if (isTextField) return;
-      e.preventDefault();
-      // Focus may be sitting on a control like the zoom slider — blur it so Space-to-pan
-      // engages immediately instead of being swallowed by the focused input.
-      if (tag === 'INPUT' || tag === 'BUTTON') el.blur();
-      setSpaceHeld(true);
-    };
-    const onKeyUp = (e) => {
-      if (e.code === 'Space') {
-        const wasPanning = panState.current !== null;
-        setSpaceHeld(false);
-        // Cancel panning if space is released while panning
-        if (panState.current) {
+    <script type="text/babel">
+      // PannableContainer — allows panning when zoomed in
+      function PannableContainer({ children, zoom, theme }) {
+        const containerRef = useRef(null);
+        const contentRef = useRef(null);
+        const [pan, setPan] = useState({ x: 0, y: 0 });
+        const [isPanning, setIsPanning] = useState(false);
+        const [spaceHeld, setSpaceHeld] = useState(false);
+        const panState = useRef(null);
+
+        const isZoomed = zoom > 100;
+
+        const onWheel = useCallback(
+          e => {
+            if (!isZoomed) return;
+            e.preventDefault();
+            setPan(prev => ({
+              x: prev.x - e.deltaX,
+              y: prev.y - e.deltaY,
+            }));
+          },
+          [isZoomed],
+        );
+
+        const onPointerDown = useCallback(
+          e => {
+            if (!isZoomed || !spaceHeld) return;
+            if (e.button === 0) {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsPanning(true);
+              panState.current = {
+                startX: e.clientX,
+                startY: e.clientY,
+                panX: pan.x,
+                panY: pan.y,
+                pointerId: e.pointerId,
+              };
+              containerRef.current.setPointerCapture(e.pointerId);
+              // Mark that we're panning
+              if (contentRef.current) {
+                contentRef.current.setAttribute("data-panning", "true");
+              }
+            }
+          },
+          [isZoomed, spaceHeld, pan],
+        );
+
+        const onPointerMove = useCallback(e => {
+          if (!panState.current) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const dx = e.clientX - panState.current.startX;
+          const dy = e.clientY - panState.current.startY;
+          setPan({
+            x: panState.current.panX + dx,
+            y: panState.current.panY + dy,
+          });
+        }, []);
+
+        const onPointerUp = useCallback(e => {
+          if (!panState.current) return;
+          e.preventDefault();
+          e.stopPropagation();
+
           // Remove panning marker
           if (contentRef.current) {
-            contentRef.current.removeAttribute('data-panning');
+            contentRef.current.removeAttribute("data-panning");
           }
-          // Prevent the pointerup from triggering grid selection
-          if (containerRef.current && panState.current.pointerId != null) {
-            containerRef.current.releasePointerCapture(panState.current.pointerId);
-          }
+
           panState.current = null;
           setIsPanning(false);
-          // Stop event propagation to prevent selection box
-          if (wasPanning) {
+          if (containerRef.current) {
+            containerRef.current.releasePointerCapture(e.pointerId);
+          }
+        }, []);
+
+        // Track spacebar key state
+        useEffect(() => {
+          const onKeyDown = e => {
+            if (e.code !== "Space" || e.repeat) return;
+            const el = e.target;
+            const tag = el.tagName;
+            const type = (el.type || "").toLowerCase();
+            const isTextField =
+              tag === "TEXTAREA"
+              || (tag === "INPUT"
+                && ["text", "number", "search", "email", "url", "password", "tel"].includes(type));
+            if (isTextField) return;
             e.preventDefault();
-            e.stopPropagation();
+            // Focus may be sitting on a control like the zoom slider — blur it so Space-to-pan
+            // engages immediately instead of being swallowed by the focused input.
+            if (tag === "INPUT" || tag === "BUTTON") el.blur();
+            setSpaceHeld(true);
+          };
+          const onKeyUp = e => {
+            if (e.code === "Space") {
+              const wasPanning = panState.current !== null;
+              setSpaceHeld(false);
+              // Cancel panning if space is released while panning
+              if (panState.current) {
+                // Remove panning marker
+                if (contentRef.current) {
+                  contentRef.current.removeAttribute("data-panning");
+                }
+                // Prevent the pointerup from triggering grid selection
+                if (containerRef.current && panState.current.pointerId != null) {
+                  containerRef.current.releasePointerCapture(panState.current.pointerId);
+                }
+                panState.current = null;
+                setIsPanning(false);
+                // Stop event propagation to prevent selection box
+                if (wasPanning) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              }
+            }
+          };
+          window.addEventListener("keydown", onKeyDown);
+          window.addEventListener("keyup", onKeyUp);
+          return () => {
+            window.removeEventListener("keydown", onKeyDown);
+            window.removeEventListener("keyup", onKeyUp);
+          };
+        }, []);
+
+        // Reset pan when zoom changes to 100% or below
+        useEffect(() => {
+          if (!isZoomed) {
+            setPan({ x: 0, y: 0 });
           }
-        }
+        }, [isZoomed]);
+
+        const isWarm = theme === "warm";
+
+        // Determine cursor based on context
+        const getCursor = () => {
+          if (isPanning) return "grabbing";
+          if (isZoomed && spaceHeld) return "grab";
+          return "default";
+        };
+
+        return (
+          <div
+            ref={containerRef}
+            onWheel={onWheel}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 0,
+              overflow: "hidden",
+              cursor: getCursor(),
+              position: "relative",
+              zIndex: 0,
+            }}
+          >
+            <div
+              ref={contentRef}
+              style={{
+                transform: isZoomed ? `translate(${pan.x}px, ${pan.y}px)` : "none",
+                transition: isPanning ? "none" : "transform 0.2s ease-out",
+                pointerEvents: spaceHeld ? "none" : "auto",
+              }}
+            >
+              {children}
+            </div>
+
+            {/* Hint when zoomed */}
+            {isZoomed && !isPanning && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 12,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  background: isWarm ? "rgba(60,50,40,0.85)" : "rgba(20,26,35,0.85)",
+                  backdropFilter: "blur(8px)",
+                  color: isWarm ? "#fbf8f0" : "rgba(255,255,255,0.85)",
+                  font: "11px/1.4 Inter, system-ui, sans-serif",
+                  pointerEvents: "none",
+                  opacity: 0.7,
+                  transition: "opacity 0.3s ease",
+                }}
+              >
+                Hold <strong>Space</strong> + drag to pan • Scroll to pan
+              </div>
+            )}
+          </div>
+        );
       }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
-  }, []);
 
-  // Reset pan when zoom changes to 100% or below
-  useEffect(() => {
-    if (!isZoomed) {
-      setPan({ x: 0, y: 0 });
-    }
-  }, [isZoomed]);
+      window.PannableContainer = PannableContainer;
+    </script>
 
-  const isWarm = theme === 'warm';
+    <script type="text/babel">
+      const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
-  // Determine cursor based on context
-  const getCursor = () => {
-    if (isPanning) return 'grabbing';
-    if (isZoomed && spaceHeld) return 'grab';
-    return 'default';
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      onWheel={onWheel}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      style={{
-        flex: 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 0,
-        overflow: 'hidden',
-        cursor: getCursor(),
-        position: 'relative',
-        zIndex: 0,
-      }}
-    >
-      <div
-        ref={contentRef}
-        style={{
-          transform: isZoomed ? `translate(${pan.x}px, ${pan.y}px)` : 'none',
-          transition: isPanning ? 'none' : 'transform 0.2s ease-out',
-          pointerEvents: spaceHeld ? 'none' : 'auto',
-        }}
-      >
-        {children}
-      </div>
-      
-      {/* Hint when zoomed */}
-      {isZoomed && !isPanning && (
-        <div style={{
-          position: 'absolute',
-          bottom: 12,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          padding: '6px 12px',
-          borderRadius: 6,
-          background: isWarm ? 'rgba(60,50,40,0.85)' : 'rgba(20,26,35,0.85)',
-          backdropFilter: 'blur(8px)',
-          color: isWarm ? '#fbf8f0' : 'rgba(255,255,255,0.85)',
-          font: '11px/1.4 Inter, system-ui, sans-serif',
-          pointerEvents: 'none',
-          opacity: 0.7,
-          transition: 'opacity 0.3s ease',
-        }}>
-          Hold <strong>Space</strong> + drag to pan • Scroll to pan
-        </div>
-      )}
-    </div>
-  );
-}
-
-window.PannableContainer = PannableContainer;
-</script>
-
-<script type="text/babel">
-
-const { useState, useEffect, useMemo, useRef, useCallback } = React;
-
-function useTweaks(defaults) {
-  const [values, setValues] = React.useState(defaults);
-  const setTweak = React.useCallback((keyOrEdits, val) => {
-    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
-      ? keyOrEdits : { [keyOrEdits]: val };
-    setValues((prev) => ({ ...prev, ...edits }));
-  }, []);
-  return [values, setTweak];
-}
-
-const TWEAK_DEFAULTS = {
-  "theme": "dark",
-  "vizMode": "focus",
-  "zoom": 100,
-  "iconStyle": "solid",
-  "trayLayout": "drawer"
-};
-
-function App() {
-  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-
-  const [gridSize, setGridSize] = useState({ w: 10, h: 10 });
-  const [placements, setPlacements] = useState(INITIAL_PLACEMENTS);
-  const [inventory, setInventory] = useState(INITIAL_INVENTORY);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [selectedTypeId, setSelectedTypeId] = useState(null);
-  const [highlightedTypeId, setHighlightedTypeId] = useState(null);
-  const [hoveredId, setHoveredId] = useState(null);
-  const [draggingFromTray, setDraggingFromTray] = useState(null);
-  const [optimizing, setOptimizing] = useState(false);
-  const [disabledCells, setDisabledCells] = useState(new Set());
-  const [itemTypes, setItemTypes] = useState(ITEM_TYPES);
-  const [newTypeOpen, setNewTypeOpen] = useState(false);
-  const [deleteTypeTarget, setDeleteTypeTarget] = useState(null);
-  const [shapeEditorTarget, setShapeEditorTarget] = useState(null);
-  const [shapeConflict, setShapeConflict] = useState(null);
-
-  useEffect(() => {
-    if (t.vizMode === 'aura' || t.vizMode === 'lines') setTweak('vizMode', 'edges');
-    if (t.theme === 'mono') setTweak('theme', 'dark');
-    if (t.iconStyle === 'dot') setTweak('iconStyle', 'solid');
-  }, []);
-
-  useMemo(() => {setRuntimeItemTypes(itemTypes);return itemTypes;}, [itemTypes]);
-
-  const typeById = useMemo(
-    () => Object.fromEntries(itemTypes.map((tt) => [tt.id, tt])),
-    [itemTypes]
-  );
-
-  const onUpdateType = useCallback((id, patch) => {
-    setItemTypes((prev) => prev.map((tt) => tt.id === id ? { ...tt, ...patch } : tt));
-  }, []);
-
-  const onCreateType = useCallback((newType, count) => {
-    setItemTypes((prev) => [...prev, newType]);
-    setInventory((prev) => ({ ...prev, [newType.id]: (prev[newType.id] ?? 0) + count }));
-  }, []);
-
-  // Set the available stock (inventory count) for a type — lets the user restock
-  // an object that's fully placed so they can create more instances of it.
-  const onSetStock = useCallback((typeId, n) => {
-    if (!typeId) return;
-    setInventory((prev) => ({ ...prev, [typeId]: Math.max(0, Math.min(999, Math.round(n))) }));
-  }, []);
-
-  const onSaveShape = useCallback((id, newCells) => {
-    // Check if any existing placements of this type would collide with the new shape
-    const affected = placements.filter((p) => p.type === id);
-    const others = placements.filter((p) => p.type !== id);
-    
-    // For each affected placement, check if the new shape would fit
-    const conflicts = [];
-    for (const p of affected) {
-      const testPlacement = { ...p, type: '__test' };
-      // Temporarily create a test type with new cells
-      const testType = { id: '__test', cells: newCells };
-      const savedTypes = window.__TYPES;
-      window.__TYPES = [...savedTypes, testType];
-      
-      const wouldFit = fits(testPlacement, others, gridW, gridH, p.id, disabledCells);
-      window.__TYPES = savedTypes;
-      
-      if (!wouldFit) {
-        conflicts.push(p);
+      function useTweaks(defaults) {
+        const [values, setValues] = React.useState(defaults);
+        const setTweak = React.useCallback((keyOrEdits, val) => {
+          const edits =
+            typeof keyOrEdits === "object" && keyOrEdits !== null
+              ? keyOrEdits
+              : { [keyOrEdits]: val };
+          setValues(prev => ({ ...prev, ...edits }));
+        }, []);
+        return [values, setTweak];
       }
-    }
-    
-    if (conflicts.length > 0) {
-      setShapeConflict({
-        typeId: id,
-        newCells,
-        conflicts,
-        itemType: typeById[id]
-      });
-      return;
-    }
-    
-    setItemTypes((prev) => prev.map((tt) => tt.id === id ? { ...tt, cells: newCells } : tt));
-  }, [placements, gridW, gridH, disabledCells, typeById]);
 
-  const onResolveShapeConflict = useCallback(() => {
-    if (!shapeConflict) return;
-    const { typeId, newCells, conflicts } = shapeConflict;
-    
-    // Remove conflicting placements
-    const conflictIds = new Set(conflicts.map((p) => p.id));
-    setPlacements((prev) => prev.filter((p) => !conflictIds.has(p.id)));
-    
-    // Return items to inventory
-    const returned = {};
-    for (const p of conflicts) {
-      returned[p.type] = (returned[p.type] || 0) + 1;
-    }
-    setInventory((prev) => {
-      const next = { ...prev };
-      for (const [type, count] of Object.entries(returned)) {
-        next[type] = (next[type] || 0) + count;
-      }
-      return next;
-    });
-    
-    // Apply shape change
-    setItemTypes((prev) => prev.map((tt) => tt.id === typeId ? { ...tt, cells: newCells } : tt));
-    
-    setShapeConflict(null);
-  }, [shapeConflict]);
+      const TWEAK_DEFAULTS = {
+        theme: "dark",
+        vizMode: "focus",
+        zoom: 100,
+        iconStyle: "solid",
+        trayLayout: "drawer",
+      };
 
-  const gridW = gridSize.w,gridH = gridSize.h;
-  const gap = 4;
+      function App() {
+        const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
-  // Compute cell size: at zoom=100% the grid fits the container.
-  const gridContainerRef = useRef(null);
-  const [containerSize, setContainerSize] = useState({ w: 800, h: 600 });
-  useEffect(() => {
-    const el = gridContainerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const r = entries[0].contentRect;
-      if (r.width > 0 && r.height > 0) setContainerSize({ w: r.width, h: r.height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+        const [gridSize, setGridSize] = useState({ w: 10, h: 10 });
+        const [placements, setPlacements] = useState(INITIAL_PLACEMENTS);
+        const [inventory, setInventory] = useState(INITIAL_INVENTORY);
+        const [selectedIds, setSelectedIds] = useState([]);
+        const [selectedTypeId, setSelectedTypeId] = useState(null);
+        const [highlightedTypeId, setHighlightedTypeId] = useState(null);
+        const [hoveredId, setHoveredId] = useState(null);
+        const [draggingFromTray, setDraggingFromTray] = useState(null);
+        const [optimizing, setOptimizing] = useState(false);
+        const [disabledCells, setDisabledCells] = useState(new Set());
+        const [itemTypes, setItemTypes] = useState(ITEM_TYPES);
+        const [newTypeOpen, setNewTypeOpen] = useState(false);
+        const [deleteTypeTarget, setDeleteTypeTarget] = useState(null);
+        const [shapeEditorTarget, setShapeEditorTarget] = useState(null);
+        const [shapeConflict, setShapeConflict] = useState(null);
 
-  const zoom = t.zoom ?? 100;
-  const wsPad = 18;
-  const availW = containerSize.w - 64 - wsPad * 2 - 2;
-  const availH = containerSize.h - 64 - wsPad * 2 - 2 - 70 - 42; // extra 42 for controls bar + label
-  const baseCell = Math.max(12, Math.min(
-    Math.floor((availW - (gridW - 1) * gap) / gridW),
-    Math.floor((availH - (gridH - 1) * gap) / gridH)
-  ));
-  const cell = Math.round(baseCell * (zoom / 100));
+        useEffect(() => {
+          if (t.vizMode === "aura" || t.vizMode === "lines") setTweak("vizMode", "edges");
+          if (t.theme === "mono") setTweak("theme", "dark");
+          if (t.iconStyle === "dot") setTweak("iconStyle", "solid");
+        }, []);
 
-  const scoreData = useMemo(() => calcScore(placements), [placements, itemTypes]);
+        useMemo(() => {
+          setRuntimeItemTypes(itemTypes);
+          return itemTypes;
+        }, [itemTypes]);
 
-  useEffect(() => {document.body.className = `theme-${t.theme}`;}, [t.theme]);
+        const typeById = useMemo(
+          () => Object.fromEntries(itemTypes.map(tt => [tt.id, tt])),
+          [itemTypes],
+        );
 
-  // Select/deselect handlers
-  const onSelectPlacements = useCallback((ids) => {
-    setSelectedIds(ids);
-    if (ids.length > 0) setSelectedTypeId(null);
-  }, []);
-  const onSelectTrayType = useCallback((id) => {
-    setSelectedTypeId((prev) => prev === id ? null : id);
-    setSelectedIds([]);
-  }, []);
+        const onUpdateType = useCallback((id, patch) => {
+          setItemTypes(prev => prev.map(tt => (tt.id === id ? { ...tt, ...patch } : tt)));
+        }, []);
 
-  // Global click handler: deselect inventory type when clicking outside tray items.
-  // The right-hand panel (Composition rows + the editor itself) is exempt, so
-  // clicking a Composition row to open the editor — or clicking inside the editor —
-  // doesn't immediately clear the selection.
-  useEffect(() => {
-    if (!selectedTypeId) return;
-    const onClick = (e) => {
-      if (e.target.closest('[data-tray-item]')) return;
-      if (e.target.closest('[data-tray-panel]')) return;
-      if (e.target.closest('[data-score-panel]')) return;
-      setSelectedTypeId(null);
-    };
-    const timer = setTimeout(() => document.addEventListener('click', onClick), 0);
-    return () => {clearTimeout(timer);document.removeEventListener('click', onClick);};
-  }, [selectedTypeId]);
+        const onCreateType = useCallback((newType, count) => {
+          setItemTypes(prev => [...prev, newType]);
+          setInventory(prev => ({ ...prev, [newType.id]: (prev[newType.id] ?? 0) + count }));
+        }, []);
 
-  // Global click handler: deselect workspace placements when clicking off the grid.
-  // Mirrors the inventory behaviour — click anywhere outside the grid (or the editor
-  // panel that lets you edit the selection) to deselect.
-  useEffect(() => {
-    if (selectedIds.length === 0) return;
-    const onClick = (e) => {
-      if (e.target.closest('[data-grid-surface]')) return;
-      if (e.target.closest('[data-score-panel]')) return;
-      setSelectedIds([]);
-    };
-    const timer = setTimeout(() => document.addEventListener('click', onClick), 0);
-    return () => {clearTimeout(timer);document.removeEventListener('click', onClick);};
-  }, [selectedIds]);
+        // Set the available stock (inventory count) for a type — lets the user restock
+        // an object that's fully placed so they can create more instances of it.
+        const onSetStock = useCallback((typeId, n) => {
+          if (!typeId) return;
+          setInventory(prev => ({ ...prev, [typeId]: Math.max(0, Math.min(999, Math.round(n))) }));
+        }, []);
 
-  // Safe grid resize — compacts placements toward the shrinking edge so empty
-  // space on either side can be reclaimed; only blocks if the occupied span
-  // genuinely can't fit the requested size.
-  const onSafeResizeW = useCallback((newW) => {
-    const w = Math.max(2, Math.min(20, newW));
-    const res = resizeFit(placements, disabledCells, w, gridH);
-    if (!res) return;
-    setPlacements(res.placements);
-    setDisabledCells(res.disabled);
-    setGridSize((prev) => ({ ...prev, w }));
-  }, [placements, disabledCells, gridH]);
+        const onSaveShape = useCallback(
+          (id, newCells) => {
+            // Check if any existing placements of this type would collide with the new shape
+            const affected = placements.filter(p => p.type === id);
+            const others = placements.filter(p => p.type !== id);
 
-  const onSafeResizeH = useCallback((newH) => {
-    const h = Math.max(2, Math.min(20, newH));
-    const res = resizeFit(placements, disabledCells, gridW, h);
-    if (!res) return;
-    setPlacements(res.placements);
-    setDisabledCells(res.disabled);
-    setGridSize((prev) => ({ ...prev, h }));
-  }, [placements, disabledCells, gridW]);
+            // For each affected placement, check if the new shape would fit
+            const conflicts = [];
+            for (const p of affected) {
+              const testPlacement = { ...p, type: "__test" };
+              // Temporarily create a test type with new cells
+              const testType = { id: "__test", cells: newCells };
+              const savedTypes = window.__TYPES;
+              window.__TYPES = [...savedTypes, testType];
 
-  const toggleDisabledCell = (cx, cy) => {
-    const key = `${cx},${cy}`;
-    const occupied = placements.some((p) => cellsOf(p).some(([x, y]) => x === cx && y === cy));
-    if (occupied) return;
-    setDisabledCells((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);else next.add(key);
-      return next;
-    });
-  };
+              const wouldFit = fits(testPlacement, others, gridW, gridH, p.id, disabledCells);
+              window.__TYPES = savedTypes;
 
-  const rotateSelection = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    setPlacements((prev) => prev.map((p) => {
-      if (!selectedIds.includes(p.id)) return p;
-      const newRot = (p.rot + 90) % 360;
-      const candidate = { ...p, rot: newRot };
-      if (fits(candidate, prev, gridW, gridH, p.id, disabledCells)) return candidate;
-      return p;
-    }));
-  }, [selectedIds, gridW, gridH, disabledCells]);
+              if (!wouldFit) {
+                conflicts.push(p);
+              }
+            }
 
-  const deleteSelection = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    const removed = placements.filter((p) => selectedIds.includes(p.id));
-    setPlacements(placements.filter((p) => !selectedIds.includes(p.id)));
-    const newInv = { ...inventory };
-    for (const p of removed) newInv[p.type] = (newInv[p.type] || 0) + 1;
-    setInventory(newInv);
-    setSelectedIds([]);
-  }, [selectedIds, placements, inventory]);
+            if (conflicts.length > 0) {
+              setShapeConflict({
+                typeId: id,
+                newCells,
+                conflicts,
+                itemType: typeById[id],
+              });
+              return;
+            }
 
-  const confirmDeleteType = useCallback(() => {
-    if (!deleteTypeTarget) return;
-    const typeId = deleteTypeTarget;
-    setPlacements((prev) => prev.filter((p) => p.type !== typeId));
-    setInventory((prev) => {
-      const next = { ...prev };
-      delete next[typeId];
-      return next;
-    });
-    setItemTypes((prev) => prev.filter((tt) => tt.id !== typeId));
-    setSelectedTypeId(null);
-    setDeleteTypeTarget(null);
-  }, [deleteTypeTarget]);
+            setItemTypes(prev => prev.map(tt => (tt.id === id ? { ...tt, cells: newCells } : tt)));
+          },
+          [placements, gridW, gridH, disabledCells, typeById],
+        );
 
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
-        if (draggingFromTray) {
-          setDraggingFromTray((d) => d ? { ...d, rot: ((d.rot ?? 0) + 90) % 360 } : d);
-        } else {
-          rotateSelection();
-        }
-      } else
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        if (selectedTypeId) { setDeleteTypeTarget(selectedTypeId); }
-        else { deleteSelection(); }
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [rotateSelection, deleteSelection, draggingFromTray, selectedTypeId]);
+        const onResolveShapeConflict = useCallback(() => {
+          if (!shapeConflict) return;
+          const { typeId, newCells, conflicts } = shapeConflict;
 
-  const onTrayDragStart = (e, type) => {
-    e.preventDefault();
-    setDraggingFromTray({ type: type.id, rot: 0 });
-    const onMove = () => {};
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
+          // Remove conflicting placements
+          const conflictIds = new Set(conflicts.map(p => p.id));
+          setPlacements(prev => prev.filter(p => !conflictIds.has(p.id)));
 
-  const onAddNew = () => setNewTypeOpen(true);
+          // Return items to inventory
+          const returned = {};
+          for (const p of conflicts) {
+            returned[p.type] = (returned[p.type] || 0) + 1;
+          }
+          setInventory(prev => {
+            const next = { ...prev };
+            for (const [type, count] of Object.entries(returned)) {
+              next[type] = (next[type] || 0) + count;
+            }
+            return next;
+          });
 
-  // Place a single instance of the currently selected inventory type onto the
-  // first free spot it fits (any rotation). Mirrors the per-type half of Place all.
-  const onAddItem = useCallback(() => {
-    if (!selectedTypeId) return;
-    let chosen = null;
-    outer: for (let y = 0; y < gridH; y++) {
-      for (let x = 0; x < gridW; x++) {
-        for (const rot of [0, 90, 180, 270]) {
-          const tryP = { id: 'ai' + Date.now() + Math.floor(Math.random() * 999), type: selectedTypeId, x, y, rot };
-          if (fits(tryP, placements, gridW, gridH, tryP.id, disabledCells)) { chosen = tryP; break outer; }
-        }
-      }
-    }
-    if (!chosen) return; // grid is full — nowhere to put it
-    setPlacements([...placements, chosen]);
-    // If there's stock available, consume one. If the object is fully placed
-    // (stock 0), Add still works: it mints a new instance, so the total count
-    // of this object grows and stock stays at 0 (created + immediately placed).
-    const cur = inventory[selectedTypeId] ?? 0;
-    if (cur > 0) setInventory({ ...inventory, [selectedTypeId]: cur - 1 });
-  }, [selectedTypeId, inventory, placements, gridW, gridH, disabledCells]);
+          // Apply shape change
+          setItemTypes(prev =>
+            prev.map(tt => (tt.id === typeId ? { ...tt, cells: newCells } : tt)),
+          );
 
-  // Place every remaining inventory item onto the first free spot it fits.
-  const onPlaceAll = useCallback(() => {
-    setSelectedIds([]); setSelectedTypeId(null);
-    const placed = [...placements];
-    const newInv = { ...inventory };
-    let n = 0;
-    for (const tt of itemTypes) {
-      let count = Math.max(0, newInv[tt.id] ?? 0);
-      while (count > 0) {
-        let chosen = null;
-        outer: for (let y = 0; y < gridH; y++) {
-          for (let x = 0; x < gridW; x++) {
-            for (const rot of [0, 90, 180, 270]) {
-              const tryP = { id: 'pa' + Date.now() + '_' + n++, type: tt.id, x, y, rot };
-              if (fits(tryP, placed, gridW, gridH, tryP.id, disabledCells)) { chosen = tryP; break outer; }
+          setShapeConflict(null);
+        }, [shapeConflict]);
+
+        const gridW = gridSize.w,
+          gridH = gridSize.h;
+        const gap = 4;
+
+        // Compute cell size: at zoom=100% the grid fits the container.
+        const gridContainerRef = useRef(null);
+        const [containerSize, setContainerSize] = useState({ w: 800, h: 600 });
+        useEffect(() => {
+          const el = gridContainerRef.current;
+          if (!el) return;
+          const ro = new ResizeObserver(entries => {
+            const r = entries[0].contentRect;
+            if (r.width > 0 && r.height > 0) setContainerSize({ w: r.width, h: r.height });
+          });
+          ro.observe(el);
+          return () => ro.disconnect();
+        }, []);
+
+        const zoom = t.zoom ?? 100;
+        const wsPad = 18;
+        const availW = containerSize.w - 64 - wsPad * 2 - 2;
+        const availH = containerSize.h - 64 - wsPad * 2 - 2 - 70 - 42; // extra 42 for controls bar + label
+        const baseCell = Math.max(
+          12,
+          Math.min(
+            Math.floor((availW - (gridW - 1) * gap) / gridW),
+            Math.floor((availH - (gridH - 1) * gap) / gridH),
+          ),
+        );
+        const cell = Math.round(baseCell * (zoom / 100));
+
+        const scoreData = useMemo(() => calcScore(placements), [placements, itemTypes]);
+
+        useEffect(() => {
+          document.body.className = `theme-${t.theme}`;
+        }, [t.theme]);
+
+        // Select/deselect handlers
+        const onSelectPlacements = useCallback(ids => {
+          setSelectedIds(ids);
+          if (ids.length > 0) setSelectedTypeId(null);
+        }, []);
+        const onSelectTrayType = useCallback(id => {
+          setSelectedTypeId(prev => (prev === id ? null : id));
+          setSelectedIds([]);
+        }, []);
+
+        // Global click handler: deselect inventory type when clicking outside tray items.
+        // The right-hand panel (Composition rows + the editor itself) is exempt, so
+        // clicking a Composition row to open the editor — or clicking inside the editor —
+        // doesn't immediately clear the selection.
+        useEffect(() => {
+          if (!selectedTypeId) return;
+          const onClick = e => {
+            if (e.target.closest("[data-tray-item]")) return;
+            if (e.target.closest("[data-tray-panel]")) return;
+            if (e.target.closest("[data-score-panel]")) return;
+            setSelectedTypeId(null);
+          };
+          const timer = setTimeout(() => document.addEventListener("click", onClick), 0);
+          return () => {
+            clearTimeout(timer);
+            document.removeEventListener("click", onClick);
+          };
+        }, [selectedTypeId]);
+
+        // Global click handler: deselect workspace placements when clicking off the grid.
+        // Mirrors the inventory behaviour — click anywhere outside the grid (or the editor
+        // panel that lets you edit the selection) to deselect.
+        useEffect(() => {
+          if (selectedIds.length === 0) return;
+          const onClick = e => {
+            if (e.target.closest("[data-grid-surface]")) return;
+            if (e.target.closest("[data-score-panel]")) return;
+            setSelectedIds([]);
+          };
+          const timer = setTimeout(() => document.addEventListener("click", onClick), 0);
+          return () => {
+            clearTimeout(timer);
+            document.removeEventListener("click", onClick);
+          };
+        }, [selectedIds]);
+
+        // Safe grid resize — compacts placements toward the shrinking edge so empty
+        // space on either side can be reclaimed; only blocks if the occupied span
+        // genuinely can't fit the requested size.
+        const onSafeResizeW = useCallback(
+          newW => {
+            const w = Math.max(2, Math.min(20, newW));
+            const res = resizeFit(placements, disabledCells, w, gridH);
+            if (!res) return;
+            setPlacements(res.placements);
+            setDisabledCells(res.disabled);
+            setGridSize(prev => ({ ...prev, w }));
+          },
+          [placements, disabledCells, gridH],
+        );
+
+        const onSafeResizeH = useCallback(
+          newH => {
+            const h = Math.max(2, Math.min(20, newH));
+            const res = resizeFit(placements, disabledCells, gridW, h);
+            if (!res) return;
+            setPlacements(res.placements);
+            setDisabledCells(res.disabled);
+            setGridSize(prev => ({ ...prev, h }));
+          },
+          [placements, disabledCells, gridW],
+        );
+
+        const toggleDisabledCell = (cx, cy) => {
+          const key = `${cx},${cy}`;
+          const occupied = placements.some(p => cellsOf(p).some(([x, y]) => x === cx && y === cy));
+          if (occupied) return;
+          setDisabledCells(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+          });
+        };
+
+        const rotateSelection = useCallback(() => {
+          if (selectedIds.length === 0) return;
+          setPlacements(prev =>
+            prev.map(p => {
+              if (!selectedIds.includes(p.id)) return p;
+              const newRot = (p.rot + 90) % 360;
+              const candidate = { ...p, rot: newRot };
+              if (fits(candidate, prev, gridW, gridH, p.id, disabledCells)) return candidate;
+              return p;
+            }),
+          );
+        }, [selectedIds, gridW, gridH, disabledCells]);
+
+        const deleteSelection = useCallback(() => {
+          if (selectedIds.length === 0) return;
+          const removed = placements.filter(p => selectedIds.includes(p.id));
+          setPlacements(placements.filter(p => !selectedIds.includes(p.id)));
+          const newInv = { ...inventory };
+          for (const p of removed) newInv[p.type] = (newInv[p.type] || 0) + 1;
+          setInventory(newInv);
+          setSelectedIds([]);
+        }, [selectedIds, placements, inventory]);
+
+        const confirmDeleteType = useCallback(() => {
+          if (!deleteTypeTarget) return;
+          const typeId = deleteTypeTarget;
+          setPlacements(prev => prev.filter(p => p.type !== typeId));
+          setInventory(prev => {
+            const next = { ...prev };
+            delete next[typeId];
+            return next;
+          });
+          setItemTypes(prev => prev.filter(tt => tt.id !== typeId));
+          setSelectedTypeId(null);
+          setDeleteTypeTarget(null);
+        }, [deleteTypeTarget]);
+
+        useEffect(() => {
+          const onKey = e => {
+            if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+            if (e.key === "r" || e.key === "R") {
+              e.preventDefault();
+              if (draggingFromTray) {
+                setDraggingFromTray(d => (d ? { ...d, rot: ((d.rot ?? 0) + 90) % 360 } : d));
+              } else {
+                rotateSelection();
+              }
+            } else if (e.key === "Delete" || e.key === "Backspace") {
+              e.preventDefault();
+              if (selectedTypeId) {
+                setDeleteTypeTarget(selectedTypeId);
+              } else {
+                deleteSelection();
+              }
+            }
+          };
+          window.addEventListener("keydown", onKey);
+          return () => window.removeEventListener("keydown", onKey);
+        }, [rotateSelection, deleteSelection, draggingFromTray, selectedTypeId]);
+
+        const onTrayDragStart = (e, type) => {
+          e.preventDefault();
+          setDraggingFromTray({ type: type.id, rot: 0 });
+          const onMove = () => {};
+          const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+          };
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+        };
+
+        const onAddNew = () => setNewTypeOpen(true);
+
+        // Place a single instance of the currently selected inventory type onto the
+        // first free spot it fits (any rotation). Mirrors the per-type half of Place all.
+        const onAddItem = useCallback(() => {
+          if (!selectedTypeId) return;
+          let chosen = null;
+          outer: for (let y = 0; y < gridH; y++) {
+            for (let x = 0; x < gridW; x++) {
+              for (const rot of [0, 90, 180, 270]) {
+                const tryP = {
+                  id: "ai" + Date.now() + Math.floor(Math.random() * 999),
+                  type: selectedTypeId,
+                  x,
+                  y,
+                  rot,
+                };
+                if (fits(tryP, placements, gridW, gridH, tryP.id, disabledCells)) {
+                  chosen = tryP;
+                  break outer;
+                }
+              }
             }
           }
-        }
-        if (!chosen) break; // no room left for this type
-        placed.push(chosen);
-        count -= 1;
-      }
-      newInv[tt.id] = count;
-    }
-    setPlacements(placed);
-    setInventory(newInv);
-  }, [placements, inventory, itemTypes, gridW, gridH, disabledCells]);
+          if (!chosen) return; // grid is full — nowhere to put it
+          setPlacements([...placements, chosen]);
+          // If there's stock available, consume one. If the object is fully placed
+          // (stock 0), Add still works: it mints a new instance, so the total count
+          // of this object grows and stock stays at 0 (created + immediately placed).
+          const cur = inventory[selectedTypeId] ?? 0;
+          if (cur > 0) setInventory({ ...inventory, [selectedTypeId]: cur - 1 });
+        }, [selectedTypeId, inventory, placements, gridW, gridH, disabledCells]);
 
-  const fileInputRef = useRef(null);
-  const onImport = () => fileInputRef.current?.click();
-  const onImportFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (data.gridSize) setGridSize(data.gridSize);
-        if (Array.isArray(data.placements)) setPlacements(data.placements);
-        if (Array.isArray(data.disabledCells)) setDisabledCells(new Set(data.disabledCells));
-        if (Array.isArray(data.itemTypes)) setItemTypes(data.itemTypes);
-        if (data.inventory) setInventory(data.inventory);
-        setSelectedIds([]);setSelectedTypeId(null);
-      } catch (err) {
-        console.error('Import failed:', err);
-        alert('Could not parse layout file.');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const onExport = () => {
-    const data = { gridSize, placements, disabledCells: Array.from(disabledCells),
-      itemTypes, inventory, score: scoreData.total };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;a.download = 'layout.json';
-    document.body.appendChild(a);a.click();a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
-  const onOptimize = async () => {
-    if (optimizing) return;
-    setOptimizing(true);
-    setSelectedIds([]);setSelectedTypeId(null);
-    let best = { placements, score: scoreData.total };
-    const trials = 14;
-    for (let i = 0; i < trials; i++) {
-      const shuffled = [...best.placements].sort(() => Math.random() - 0.5);
-      const placed = [];
-      for (const p of shuffled) {
-        let chosen = null;
-        for (let k = 0; k < 12; k++) {
-          const dx = Math.floor((Math.random() - 0.5) * 6);
-          const dy = Math.floor((Math.random() - 0.5) * 6);
-          const tryP = { ...p, x: Math.max(0, Math.min(gridW - 1, p.x + dx)), y: Math.max(0, Math.min(gridH - 1, p.y + dy)) };
-          if (fits(tryP, placed, gridW, gridH, p.id, disabledCells)) {chosen = tryP;break;}
-        }
-        if (!chosen) {
-          if (fits(p, placed, gridW, gridH, p.id, disabledCells)) chosen = p;else
-          {
-            outer: for (let y = 0; y < gridH; y++) for (let x = 0; x < gridW; x++) {
-              const tryP = { ...p, x, y };
-              if (fits(tryP, placed, gridW, gridH, p.id, disabledCells)) {chosen = tryP;break outer;}
+        // Place every remaining inventory item onto the first free spot it fits.
+        const onPlaceAll = useCallback(() => {
+          setSelectedIds([]);
+          setSelectedTypeId(null);
+          const placed = [...placements];
+          const newInv = { ...inventory };
+          let n = 0;
+          for (const tt of itemTypes) {
+            let count = Math.max(0, newInv[tt.id] ?? 0);
+            while (count > 0) {
+              let chosen = null;
+              outer: for (let y = 0; y < gridH; y++) {
+                for (let x = 0; x < gridW; x++) {
+                  for (const rot of [0, 90, 180, 270]) {
+                    const tryP = { id: "pa" + Date.now() + "_" + n++, type: tt.id, x, y, rot };
+                    if (fits(tryP, placed, gridW, gridH, tryP.id, disabledCells)) {
+                      chosen = tryP;
+                      break outer;
+                    }
+                  }
+                }
+              }
+              if (!chosen) break; // no room left for this type
+              placed.push(chosen);
+              count -= 1;
             }
+            newInv[tt.id] = count;
           }
-        }
-        if (chosen) placed.push(chosen);
+          setPlacements(placed);
+          setInventory(newInv);
+        }, [placements, inventory, itemTypes, gridW, gridH, disabledCells]);
+
+        const fileInputRef = useRef(null);
+        const onImport = () => fileInputRef.current?.click();
+        const onImportFile = e => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const data = JSON.parse(reader.result);
+              if (data.gridSize) setGridSize(data.gridSize);
+              if (Array.isArray(data.placements)) setPlacements(data.placements);
+              if (Array.isArray(data.disabledCells)) setDisabledCells(new Set(data.disabledCells));
+              if (Array.isArray(data.itemTypes)) setItemTypes(data.itemTypes);
+              if (data.inventory) setInventory(data.inventory);
+              setSelectedIds([]);
+              setSelectedTypeId(null);
+            } catch (err) {
+              console.error("Import failed:", err);
+              alert("Could not parse layout file.");
+            }
+          };
+          reader.readAsText(file);
+          e.target.value = "";
+        };
+
+        const onExport = () => {
+          const data = {
+            gridSize,
+            placements,
+            disabledCells: Array.from(disabledCells),
+            itemTypes,
+            inventory,
+            score: scoreData.total,
+          };
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "layout.json";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        };
+
+        const onOptimize = async () => {
+          if (optimizing) return;
+          setOptimizing(true);
+          setSelectedIds([]);
+          setSelectedTypeId(null);
+          let best = { placements, score: scoreData.total };
+          const trials = 14;
+          for (let i = 0; i < trials; i++) {
+            const shuffled = [...best.placements].sort(() => Math.random() - 0.5);
+            const placed = [];
+            for (const p of shuffled) {
+              let chosen = null;
+              for (let k = 0; k < 12; k++) {
+                const dx = Math.floor((Math.random() - 0.5) * 6);
+                const dy = Math.floor((Math.random() - 0.5) * 6);
+                const tryP = {
+                  ...p,
+                  x: Math.max(0, Math.min(gridW - 1, p.x + dx)),
+                  y: Math.max(0, Math.min(gridH - 1, p.y + dy)),
+                };
+                if (fits(tryP, placed, gridW, gridH, p.id, disabledCells)) {
+                  chosen = tryP;
+                  break;
+                }
+              }
+              if (!chosen) {
+                if (fits(p, placed, gridW, gridH, p.id, disabledCells)) chosen = p;
+                else {
+                  outer: for (let y = 0; y < gridH; y++)
+                    for (let x = 0; x < gridW; x++) {
+                      const tryP = { ...p, x, y };
+                      if (fits(tryP, placed, gridW, gridH, p.id, disabledCells)) {
+                        chosen = tryP;
+                        break outer;
+                      }
+                    }
+                }
+              }
+              if (chosen) placed.push(chosen);
+            }
+            const s = calcScore(placed).total;
+            if (s > best.score) best = { placements: placed, score: s };
+            setPlacements(placed);
+            await new Promise(r => setTimeout(r, 90));
+          }
+          setPlacements(best.placements);
+          await new Promise(r => setTimeout(r, 120));
+          setOptimizing(false);
+        };
+
+        const isWarm = t.theme === "warm";
+        const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
+        const fgFaint = isWarm ? "rgba(60,50,40,0.35)" : "rgba(255,255,255,0.3)";
+        const bg = isWarm ? "#f5f1e8" : "#0e1116";
+        const surface = isWarm ? "#fbf8f0" : "#141a23";
+        const surfaceSubtle = isWarm ? "#f0ebde" : "#0d121a";
+        const border = isWarm ? "rgba(60,50,40,0.1)" : "rgba(255,255,255,0.06)";
+
+        const isRail = t.trayLayout === "rail";
+        // Panel width is derived from the inventory tile metrics (see trayMetrics) — not a fixed number.
+        const trayWidth = trayMetrics(isRail).width;
+
+        const sectionLabel = {
+          font: '500 10px/1 "JetBrains Mono", monospace',
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: fgFaint,
+        };
+
+        return (
+          <div
+            style={{
+              width: "100vw",
+              height: "100vh",
+              display: "grid",
+              gridTemplateRows: "52px 1fr",
+              background: bg,
+              color: fg,
+            }}
+          >
+            {/* Header — logo + theme/viz toggles only */}
+            <header
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "0 18px",
+                borderBottom: `1px solid ${border}`,
+                background: surface,
+                gap: 14,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: 22,
+                    height: 22,
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gridTemplateRows: "1fr 1fr",
+                    gap: 2,
+                  }}
+                >
+                  <div style={{ background: "oklch(0.78 0.12 195)", borderRadius: 1.5 }}></div>
+                  <div style={{ background: "oklch(0.82 0.10 240)", borderRadius: 1.5 }}></div>
+                  <div style={{ background: "oklch(0.86 0.16 110)", borderRadius: 1.5 }}></div>
+                  <div style={{ background: "oklch(0.78 0.13 25)", borderRadius: 1.5 }}></div>
+                </div>
+                <div className="logo" style={{ color: fg }}>
+                  <span className="l-name">Smart Storage</span>
+                </div>
+              </div>
+
+              <div style={{ flex: 1 }}></div>
+
+              <InlineTweaks t={t} setTweak={setTweak} theme={t.theme} />
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                onChange={onImportFile}
+                style={{ display: "none" }}
+              />
+            </header>
+
+            {/* MAIN */}
+            <main
+              style={{
+                display: "grid",
+                gridTemplateColumns: `${trayWidth}px minmax(0, 1fr) 320px`,
+                height: "100%",
+                minHeight: 0,
+              }}
+            >
+              {/* Left tray */}
+              <aside
+                data-tray-panel=""
+                style={{
+                  borderRight: `1px solid ${border}`,
+                  background: surfaceSubtle,
+                  minHeight: 0,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <Tray
+                  inventory={inventory}
+                  itemTypes={itemTypes}
+                  selectedTypeId={selectedTypeId}
+                  onSelectType={onSelectTrayType}
+                  onStartDrag={onTrayDragStart}
+                  onAddNew={onAddNew}
+                  onAddItem={onAddItem}
+                  onPlaceAll={onPlaceAll}
+                  theme={t.theme}
+                  iconStyle={t.iconStyle}
+                  layout={t.trayLayout}
+                  highlightedTypeId={highlightedTypeId}
+                  onHoverTypeId={setHighlightedTypeId}
+                />
+              </aside>
+
+              {/* Center workspace */}
+              <section
+                ref={gridContainerRef}
+                style={{
+                  position: "relative",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  padding: "14px 32px 32px",
+                  background: bg,
+                  minWidth: 0,
+                }}
+              >
+                {/* Workspace label */}
+                <div
+                  style={{
+                    ...sectionLabel,
+                    marginBottom: 12,
+                    flexShrink: 0,
+                    position: "relative",
+                    zIndex: 2,
+                  }}
+                >
+                  Workspace
+                </div>
+
+                {/* Grid card — furthest-back layer */}
+                <PannableContainer zoom={zoom} theme={t.theme}>
+                  <div
+                    style={{
+                      position: "relative",
+                      padding: wsPad,
+                      border: `1px solid ${border}`,
+                      borderRadius: 12,
+                      background: surface,
+                      boxShadow: isWarm
+                        ? "0 1px 0 rgba(255,255,255,0.5) inset"
+                        : "0 1px 0 rgba(255,255,255,0.03) inset",
+                    }}
+                  >
+                    <GridSurface
+                      placements={placements}
+                      setPlacements={setPlacements}
+                      inventory={inventory}
+                      setInventory={setInventory}
+                      selectedIds={selectedIds}
+                      setSelectedIds={onSelectPlacements}
+                      gridW={gridW}
+                      gridH={gridH}
+                      cell={cell}
+                      gap={gap}
+                      vizMode={t.vizMode}
+                      theme={t.theme}
+                      iconStyle={t.iconStyle}
+                      highlightStyle="dim"
+                      scoreData={scoreData}
+                      draggingFromTray={draggingFromTray}
+                      setDraggingFromTray={setDraggingFromTray}
+                      disabledCells={disabledCells}
+                      toggleDisabledCell={toggleDisabledCell}
+                      highlightedTypeId={highlightedTypeId}
+                      onHoverTypeId={setHighlightedTypeId}
+                      hoveredId={hoveredId}
+                      onHoverPlacement={setHoveredId}
+                    />
+                  </div>
+                </PannableContainer>
+
+                {/* Bottom controls — grid resize, zoom, shortcuts (layered above the grid) */}
+                <div
+                  style={{
+                    flexShrink: 0,
+                    position: "relative",
+                    zIndex: 2,
+                    marginTop: 12,
+                    background: bg,
+                  }}
+                >
+                  <div
+                    style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}
+                  >
+                    <GridSizeControls
+                      gridW={gridW}
+                      gridH={gridH}
+                      onChangeW={onSafeResizeW}
+                      onChangeH={onSafeResizeH}
+                      theme={t.theme}
+                    />
+                    <ZoomSlider value={zoom} onChange={v => setTweak("zoom", v)} theme={t.theme} />
+                  </div>
+                  <ShortcutsRow theme={t.theme} />
+                </div>
+              </section>
+
+              {/* Right panel */}
+              <aside
+                data-score-panel=""
+                style={{
+                  borderLeft: `1px solid ${border}`,
+                  background: surfaceSubtle,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <ScorePanel
+                  scoreData={scoreData}
+                  placements={placements}
+                  selectedIds={selectedIds}
+                  selectedTypeId={selectedTypeId}
+                  theme={t.theme}
+                  iconStyle={t.iconStyle}
+                  optimizing={optimizing}
+                  onImport={onImport}
+                  onExport={onExport}
+                  onOptimize={onOptimize}
+                  itemTypes={itemTypes}
+                  typeById={typeById}
+                  onUpdateType={onUpdateType}
+                  onDeleteType={id => setDeleteTypeTarget(id)}
+                  onEditShape={tt => setShapeEditorTarget(tt)}
+                  onSelectType={onSelectTrayType}
+                  highlightedTypeId={highlightedTypeId}
+                  onHoverTypeId={setHighlightedTypeId}
+                  inventory={inventory}
+                  onSetStock={onSetStock}
+                />
+              </aside>
+            </main>
+
+            <NewTypeModal
+              open={newTypeOpen}
+              onClose={() => setNewTypeOpen(false)}
+              onCreate={onCreateType}
+              theme={t.theme}
+            />
+            <DeleteTypeModal
+              open={!!deleteTypeTarget}
+              itemType={deleteTypeTarget ? typeById[deleteTypeTarget] : null}
+              placementCount={
+                deleteTypeTarget ? placements.filter(p => p.type === deleteTypeTarget).length : 0
+              }
+              onConfirm={confirmDeleteType}
+              onClose={() => setDeleteTypeTarget(null)}
+              theme={t.theme}
+            />
+            <ShapeEditorModal
+              open={!!shapeEditorTarget}
+              itemType={shapeEditorTarget}
+              onSave={cells => onSaveShape(shapeEditorTarget.id, cells)}
+              onClose={() => setShapeEditorTarget(null)}
+              theme={t.theme}
+            />
+            <ShapeConflictModal
+              open={!!shapeConflict}
+              itemType={shapeConflict?.itemType}
+              conflictCount={shapeConflict?.conflicts.length || 0}
+              onRemoveConflicts={onResolveShapeConflict}
+              onClose={() => setShapeConflict(null)}
+              theme={t.theme}
+            />
+          </div>
+        );
       }
-      const s = calcScore(placed).total;
-      if (s > best.score) best = { placements: placed, score: s };
-      setPlacements(placed);
-      await new Promise((r) => setTimeout(r, 90));
-    }
-    setPlacements(best.placements);
-    await new Promise((r) => setTimeout(r, 120));
-    setOptimizing(false);
-  };
 
-  const isWarm = t.theme === 'warm';
-  const fg = isWarm ? '#3a2f22' : 'rgba(255,255,255,0.92)';
-  const fgFaint = isWarm ? 'rgba(60,50,40,0.35)' : 'rgba(255,255,255,0.3)';
-  const bg = isWarm ? '#f5f1e8' : '#0e1116';
-  const surface = isWarm ? '#fbf8f0' : '#141a23';
-  const surfaceSubtle = isWarm ? '#f0ebde' : '#0d121a';
-  const border = isWarm ? 'rgba(60,50,40,0.1)' : 'rgba(255,255,255,0.06)';
-
-  const isRail = t.trayLayout === 'rail';
-  // Panel width is derived from the inventory tile metrics (see trayMetrics) — not a fixed number.
-  const trayWidth = trayMetrics(isRail).width;
-
-  const sectionLabel = {
-    font: '500 10px/1 "JetBrains Mono", monospace',
-    letterSpacing: '0.18em', textTransform: 'uppercase',
-    color: fgFaint
-  };
-
-  return (
-    <div style={{
-      width: '100vw', height: '100vh',
-      display: 'grid', gridTemplateRows: '52px 1fr',
-      background: bg, color: fg
-    }}>
-      {/* Header — logo + theme/viz toggles only */}
-      <header style={{
-        display: 'flex', alignItems: 'center',
-        padding: '0 18px', borderBottom: `1px solid ${border}`,
-        background: surface, gap: 14
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 22, height: 22,
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 2 }}>
-            <div style={{ background: 'oklch(0.78 0.12 195)', borderRadius: 1.5 }}></div>
-            <div style={{ background: 'oklch(0.82 0.10 240)', borderRadius: 1.5 }}></div>
-            <div style={{ background: 'oklch(0.86 0.16 110)', borderRadius: 1.5 }}></div>
-            <div style={{ background: 'oklch(0.78 0.13 25)', borderRadius: 1.5 }}></div>
-          </div>
-          <div className="logo" style={{ color: fg }}>
-            <span className="l-name">Smart Storage</span>
-          </div>
-        </div>
-
-        <div style={{ flex: 1 }}></div>
-
-        <InlineTweaks t={t} setTweak={setTweak} theme={t.theme} />
-
-        <input ref={fileInputRef} type="file" accept=".json,application/json"
-        onChange={onImportFile} style={{ display: 'none' }} />
-      </header>
-
-      {/* MAIN */}
-      <main style={{
-        display: 'grid',
-        gridTemplateColumns: `${trayWidth}px minmax(0, 1fr) 320px`,
-        height: '100%', minHeight: 0
-      }}>
-        {/* Left tray */}
-        <aside data-tray-panel="" style={{
-          borderRight: `1px solid ${border}`,
-          background: surfaceSubtle,
-          minHeight: 0, minWidth: 0, overflow: 'hidden',
-          display: 'flex', flexDirection: 'column'
-        }}>
-          <Tray
-            inventory={inventory}
-            itemTypes={itemTypes}
-            selectedTypeId={selectedTypeId}
-            onSelectType={onSelectTrayType}
-            onStartDrag={onTrayDragStart}
-            onAddNew={onAddNew}
-            onAddItem={onAddItem}
-            onPlaceAll={onPlaceAll}
-            theme={t.theme}
-            iconStyle={t.iconStyle}
-            layout={t.trayLayout}
-            highlightedTypeId={highlightedTypeId}
-            onHoverTypeId={setHighlightedTypeId} />
-          
-        </aside>
-
-        {/* Center workspace */}
-        <section ref={gridContainerRef} style={{
-          position: 'relative', overflow: 'hidden',
-          display: 'flex', flexDirection: 'column',
-          padding: '14px 32px 32px', background: bg, minWidth: 0
-        }}>
-          {/* Workspace label */}
-          <div style={{ ...sectionLabel, marginBottom: 12, flexShrink: 0, position: 'relative', zIndex: 2 }}>Workspace</div>
-
-          {/* Grid card — furthest-back layer */}
-          <PannableContainer zoom={zoom} theme={t.theme}>
-            <div style={{
-              position: 'relative', padding: wsPad,
-              border: `1px solid ${border}`, borderRadius: 12, background: surface,
-              boxShadow: isWarm ? '0 1px 0 rgba(255,255,255,0.5) inset' : '0 1px 0 rgba(255,255,255,0.03) inset'
-            }}>
-              <GridSurface
-                placements={placements}
-                setPlacements={setPlacements}
-                inventory={inventory}
-                setInventory={setInventory}
-                selectedIds={selectedIds}
-                setSelectedIds={onSelectPlacements}
-                gridW={gridW} gridH={gridH}
-                cell={cell} gap={gap}
-                vizMode={t.vizMode}
-                theme={t.theme}
-                iconStyle={t.iconStyle}
-                highlightStyle="dim"
-                scoreData={scoreData}
-                draggingFromTray={draggingFromTray}
-                setDraggingFromTray={setDraggingFromTray}
-                disabledCells={disabledCells}
-                toggleDisabledCell={toggleDisabledCell}
-                highlightedTypeId={highlightedTypeId}
-                onHoverTypeId={setHighlightedTypeId}
-                hoveredId={hoveredId}
-                onHoverPlacement={setHoveredId} />
-              
-            </div>
-          </PannableContainer>
-
-          {/* Bottom controls — grid resize, zoom, shortcuts (layered above the grid) */}
-          <div style={{
-            flexShrink: 0, position: 'relative', zIndex: 2,
-            marginTop: 12, background: bg
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <GridSizeControls gridW={gridW} gridH={gridH}
-              onChangeW={onSafeResizeW} onChangeH={onSafeResizeH} theme={t.theme} />
-              <ZoomSlider value={zoom} onChange={(v) => setTweak('zoom', v)} theme={t.theme} />
-            </div>
-            <ShortcutsRow theme={t.theme} />
-          </div>
-        </section>
-
-        {/* Right panel */}
-        <aside data-score-panel="" style={{
-          borderLeft: `1px solid ${border}`, background: surfaceSubtle,
-          minHeight: 0, display: 'flex', flexDirection: 'column'
-        }}>
-          <ScorePanel
-            scoreData={scoreData}
-            placements={placements}
-            selectedIds={selectedIds}
-            selectedTypeId={selectedTypeId}
-            theme={t.theme}
-            iconStyle={t.iconStyle}
-            optimizing={optimizing}
-            onImport={onImport}
-            onExport={onExport}
-            onOptimize={onOptimize}
-            itemTypes={itemTypes}
-            typeById={typeById}
-            onUpdateType={onUpdateType}
-            onDeleteType={(id) => setDeleteTypeTarget(id)}
-            onEditShape={(tt) => setShapeEditorTarget(tt)}
-            onSelectType={onSelectTrayType}
-            highlightedTypeId={highlightedTypeId}
-            onHoverTypeId={setHighlightedTypeId}
-            inventory={inventory}
-            onSetStock={onSetStock} />
-          
-        </aside>
-      </main>
-
-      <NewTypeModal open={newTypeOpen} onClose={() => setNewTypeOpen(false)}
-      onCreate={onCreateType} theme={t.theme} />
-      <DeleteTypeModal
-        open={!!deleteTypeTarget}
-        itemType={deleteTypeTarget ? typeById[deleteTypeTarget] : null}
-        placementCount={deleteTypeTarget ? placements.filter((p) => p.type === deleteTypeTarget).length : 0}
-        onConfirm={confirmDeleteType}
-        onClose={() => setDeleteTypeTarget(null)}
-        theme={t.theme} />
-      <ShapeEditorModal
-        open={!!shapeEditorTarget}
-        itemType={shapeEditorTarget}
-        onSave={(cells) => onSaveShape(shapeEditorTarget.id, cells)}
-        onClose={() => setShapeEditorTarget(null)}
-        theme={t.theme} />
-      <ShapeConflictModal
-        open={!!shapeConflict}
-        itemType={shapeConflict?.itemType}
-        conflictCount={shapeConflict?.conflicts.length || 0}
-        onRemoveConflicts={onResolveShapeConflict}
-        onClose={() => setShapeConflict(null)}
-        theme={t.theme} />
-    </div>);
-
-}
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-</script>
-</body>
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
 </html>

@@ -197,10 +197,14 @@ function getNextAvailableCombo(existingTypes) {
 
   // Prefer combos with least-used color and glyph for maximum contrast
   const minColorUse = Math.min(...available.map(c => usedColorCounts[c.color] || 0));
-  const leastUsedColorCombos = available.filter(c => (usedColorCounts[c.color] || 0) === minColorUse);
+  const leastUsedColorCombos = available.filter(
+    c => (usedColorCounts[c.color] || 0) === minColorUse,
+  );
 
   const minGlyphUse = Math.min(...leastUsedColorCombos.map(c => usedGlyphCounts[c.glyph] || 0));
-  const bestCombos = leastUsedColorCombos.filter(c => (usedGlyphCounts[c.glyph] || 0) === minGlyphUse);
+  const bestCombos = leastUsedColorCombos.filter(
+    c => (usedGlyphCounts[c.glyph] || 0) === minGlyphUse,
+  );
 
   // Random pick from the best candidates
   return bestCombos[Math.floor(Math.random() * bestCombos.length)];
@@ -445,7 +449,8 @@ function resizeFit(placements, disabledCells, newW, newH) {
   // dx ≤ minX is guaranteed since occW ≤ newW, so nothing goes negative.
   const dx = hasItems ? Math.max(0, maxX - newW + 1) : 0;
   const dy = hasItems ? Math.max(0, maxY - newH + 1) : 0;
-  const placementsOut = dx || dy ? placements.map(p => ({ ...p, x: p.x - dx, y: p.y - dy })) : placements;
+  const placementsOut =
+    dx || dy ? placements.map(p => ({ ...p, x: p.x - dx, y: p.y - dy })) : placements;
   const disabledOut = new Set();
   if (disabledCells) {
     for (const k of disabledCells) {

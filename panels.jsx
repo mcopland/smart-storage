@@ -37,7 +37,16 @@ function trayMetrics(isRail) {
   const padR = isRail ? 2 : 8;
   const gutter = 8; // scrollbar-gutter: stable keeps width constant whether or not it scrolls
   const width = padL + cols * tileSize + (cols - 1) * gap + padR + gutter;
-  return { tileSize, gap, cols, padL, padR, gutter, width, padCss: `14px ${padR}px 14px ${padL}px` };
+  return {
+    tileSize,
+    gap,
+    cols,
+    padL,
+    padR,
+    gutter,
+    width,
+    padCss: `14px ${padR}px 14px ${padL}px`,
+  };
 }
 window.trayMetrics = trayMetrics;
 
@@ -71,7 +80,14 @@ function Tray({
   // restock it from the panel.
   const startInteract = (e, type, canDrag) => {
     e.preventDefault();
-    dragRef.current = { id: type.id, startX: e.clientX, startY: e.clientY, started: false, type, canDrag };
+    dragRef.current = {
+      id: type.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      started: false,
+      type,
+      canDrag,
+    };
     const onMove = mv => {
       const d = dragRef.current;
       if (!d || d.started || !d.canDrag) return;
@@ -156,7 +172,11 @@ function Tray({
                     ? `0 0 10px 3px color-mix(in oklab, ${tt.color} 27%, transparent)`
                     : "none",
                 borderRadius: 8,
-                background: isSel ? (isWarm ? "rgba(94,234,212,0.08)" : "rgba(94,234,212,0.06)") : cellBg,
+                background: isSel
+                  ? isWarm
+                    ? "rgba(94,234,212,0.08)"
+                    : "rgba(94,234,212,0.06)"
+                  : cellBg,
                 padding: "8px 10px 18px",
                 cursor: disabled ? "pointer" : "grab",
                 opacity: disabled ? 0.5 : 1,
@@ -231,8 +251,12 @@ function Tray({
               e.currentTarget.style.color = "oklch(0.78 0.12 195)";
             }}
             onPointerLeave={e => {
-              e.currentTarget.style.borderColor = isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.18)";
-              e.currentTarget.style.color = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.45)";
+              e.currentTarget.style.borderColor = isWarm
+                ? "rgba(60,50,40,0.25)"
+                : "rgba(255,255,255,0.18)";
+              e.currentTarget.style.color = isWarm
+                ? "rgba(60,50,40,0.55)"
+                : "rgba(255,255,255,0.45)";
             }}
           >
             +
@@ -260,8 +284,8 @@ function Tray({
         )}
       </div>
 
-      {onPlaceAll &&
-        (() => {
+      {onPlaceAll
+        && (() => {
           const remaining = itemTypes.reduce((s, tt) => s + Math.max(0, inventory[tt.id] ?? 0), 0);
           const disabled = remaining <= 0;
           const fBorder = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.07)";
@@ -295,12 +319,22 @@ function Tray({
                 style={{
                   width: "100%",
                   padding: isRail ? "8px 4px" : "9px 12px",
-                  background: addDisabled ? "transparent" : isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)",
+                  background: addDisabled
+                    ? "transparent"
+                    : isWarm
+                      ? "rgba(94,234,212,0.1)"
+                      : "rgba(94,234,212,0.08)",
                   border: `1px solid ${addDisabled ? fBorder : accent}`,
                   borderRadius: 6,
                   cursor: addDisabled ? "not-allowed" : "pointer",
-                  color: addDisabled ? (isWarm ? "rgba(60,50,40,0.3)" : "rgba(255,255,255,0.25)") : accent,
-                  font: isRail ? '500 9px/1.2 "JetBrains Mono", monospace' : "500 12px/1 Inter, sans-serif",
+                  color: addDisabled
+                    ? isWarm
+                      ? "rgba(60,50,40,0.3)"
+                      : "rgba(255,255,255,0.25)"
+                    : accent,
+                  font: isRail
+                    ? '500 9px/1.2 "JetBrains Mono", monospace'
+                    : "500 12px/1 Inter, sans-serif",
                   letterSpacing: isRail ? "0.04em" : "0.01em",
                   transition: "background 120ms, border-color 120ms",
                   whiteSpace: "nowrap",
@@ -309,28 +343,50 @@ function Tray({
                 }}
                 onPointerEnter={e => {
                   if (!addDisabled)
-                    e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.18)" : "rgba(94,234,212,0.14)";
+                    e.currentTarget.style.background = isWarm
+                      ? "rgba(94,234,212,0.18)"
+                      : "rgba(94,234,212,0.14)";
                 }}
                 onPointerLeave={e => {
                   if (!addDisabled)
-                    e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)";
+                    e.currentTarget.style.background = isWarm
+                      ? "rgba(94,234,212,0.1)"
+                      : "rgba(94,234,212,0.08)";
                 }}
               >
-                {isRail ? "Add" : selType ? (minting ? `Add ${selType.name} +` : `Add ${selType.name}`) : "Add Item"}
+                {isRail
+                  ? "Add"
+                  : selType
+                    ? minting
+                      ? `Add ${selType.name} +`
+                      : `Add ${selType.name}`
+                    : "Add Item"}
               </button>
               <button
                 onClick={onPlaceAll}
                 disabled={disabled}
-                title={disabled ? "Inventory is empty" : "Place all inventory items onto the workspace"}
+                title={
+                  disabled ? "Inventory is empty" : "Place all inventory items onto the workspace"
+                }
                 style={{
                   width: "100%",
                   padding: isRail ? "8px 4px" : "9px 12px",
-                  background: disabled ? "transparent" : isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)",
+                  background: disabled
+                    ? "transparent"
+                    : isWarm
+                      ? "rgba(94,234,212,0.1)"
+                      : "rgba(94,234,212,0.08)",
                   border: `1px solid ${disabled ? fBorder : accent}`,
                   borderRadius: 6,
                   cursor: disabled ? "not-allowed" : "pointer",
-                  color: disabled ? (isWarm ? "rgba(60,50,40,0.3)" : "rgba(255,255,255,0.25)") : accent,
-                  font: isRail ? '500 9px/1.2 "JetBrains Mono", monospace' : "500 12px/1 Inter, sans-serif",
+                  color: disabled
+                    ? isWarm
+                      ? "rgba(60,50,40,0.3)"
+                      : "rgba(255,255,255,0.25)"
+                    : accent,
+                  font: isRail
+                    ? '500 9px/1.2 "JetBrains Mono", monospace'
+                    : "500 12px/1 Inter, sans-serif",
                   letterSpacing: isRail ? "0.04em" : "0.01em",
                   transition: "background 120ms, border-color 120ms",
                   whiteSpace: "nowrap",
@@ -339,11 +395,15 @@ function Tray({
                 }}
                 onPointerEnter={e => {
                   if (!disabled)
-                    e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.18)" : "rgba(94,234,212,0.14)";
+                    e.currentTarget.style.background = isWarm
+                      ? "rgba(94,234,212,0.18)"
+                      : "rgba(94,234,212,0.14)";
                 }}
                 onPointerLeave={e => {
                   if (!disabled)
-                    e.currentTarget.style.background = isWarm ? "rgba(94,234,212,0.1)" : "rgba(94,234,212,0.08)";
+                    e.currentTarget.style.background = isWarm
+                      ? "rgba(94,234,212,0.1)"
+                      : "rgba(94,234,212,0.08)";
                 }}
               >
                 {isRail ? "Place" : `Place All${remaining > 0 ? ` (${remaining})` : ""}`}
@@ -389,7 +449,11 @@ function GlyphPicker({ value, color, onChange, theme }) {
               width: 38,
               height: 38,
               padding: 6,
-              background: sel ? (isWarm ? "rgba(94,234,212,0.12)" : "rgba(94,234,212,0.1)") : "transparent",
+              background: sel
+                ? isWarm
+                  ? "rgba(94,234,212,0.12)"
+                  : "rgba(94,234,212,0.1)"
+                : "transparent",
               border: `1px solid ${sel ? color : border}`,
               borderRadius: 5,
               cursor: "pointer",
@@ -567,7 +631,8 @@ function TagChips({ tags, onChange, theme, color, suggestions }) {
           if (e.key === "Enter" || e.key === ",") {
             e.preventDefault();
             add(draft);
-          } else if (e.key === "Backspace" && draft === "" && list.length) remove(list[list.length - 1]);
+          } else if (e.key === "Backspace" && draft === "" && list.length)
+            remove(list[list.length - 1]);
         }}
         onBlur={() => add(draft)}
         style={{
@@ -647,18 +712,29 @@ function SynergyRules({ synergies, onChange, theme, suggestions }) {
             return (
               <div
                 key={i}
-                style={{ display: "grid", gridTemplateColumns: "1fr 86px 22px", gap: 6, alignItems: "center" }}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 86px 22px",
+                  gap: 6,
+                  alignItems: "center",
+                }}
               >
                 <input
                   value={r.tag}
                   list={dlId}
                   placeholder="tag…"
                   onChange={e => setRule(i, { tag: e.target.value })}
-                  style={{ ...fieldBase, padding: "5px 8px", font: "500 11.5px/1.2 Inter, sans-serif" }}
+                  style={{
+                    ...fieldBase,
+                    padding: "5px 8px",
+                    font: "500 11.5px/1.2 Inter, sans-serif",
+                  }}
                 />
                 <button
                   onClick={() => setRule(i, { positive: !positive })}
-                  title={positive ? "Bonus — click to make penalty" : "Penalty — click to make bonus"}
+                  title={
+                    positive ? "Bonus — click to make penalty" : "Penalty — click to make bonus"
+                  }
                   style={{
                     ...fieldBase,
                     padding: "5px 6px",
@@ -722,7 +798,9 @@ function SynergyRules({ synergies, onChange, theme, suggestions }) {
           e.currentTarget.style.color = accent;
         }}
         onPointerLeave={e => {
-          e.currentTarget.style.borderColor = isWarm ? "rgba(60,50,40,0.25)" : "rgba(255,255,255,0.18)";
+          e.currentTarget.style.borderColor = isWarm
+            ? "rgba(60,50,40,0.25)"
+            : "rgba(255,255,255,0.18)";
           e.currentTarget.style.color = fgDim;
         }}
       >
@@ -857,7 +935,9 @@ function SelectedEditor({
                 +
               </button>
             </div>
-            <span style={{ font: "11px/1.4 Inter, sans-serif", color: fgDim }}>available to place</span>
+            <span style={{ font: "11px/1.4 Inter, sans-serif", color: fgDim }}>
+              available to place
+            </span>
           </div>
         </div>
       )}
@@ -893,7 +973,9 @@ function SelectedEditor({
             justifyContent: "space-between",
           }}
           onPointerEnter={e => {
-            e.currentTarget.style.background = isWarm ? "rgba(255,253,247,0.85)" : "rgba(255,255,255,0.05)";
+            e.currentTarget.style.background = isWarm
+              ? "rgba(255,253,247,0.85)"
+              : "rgba(255,255,255,0.05)";
             e.currentTarget.style.borderColor = itemType.color;
           }}
           onPointerLeave={e => {
@@ -947,7 +1029,12 @@ function SelectedEditor({
           <span>this instance</span>
           <span style={{ color: fg }}>
             <span style={{ color: fgFaint }}>synergy</span>{" "}
-            <span style={{ color: detail.total >= 0 ? "oklch(0.78 0.12 195)" : "oklch(0.7 0.18 25)", fontWeight: 600 }}>
+            <span
+              style={{
+                color: detail.total >= 0 ? "oklch(0.78 0.12 195)" : "oklch(0.7 0.18 25)",
+                fontWeight: 600,
+              }}
+            >
               {detail.total >= 0 ? "+" : ""}
               {detail.total}
             </span>
@@ -972,12 +1059,16 @@ function SelectedEditor({
             transition: "background 120ms, border-color 120ms",
           }}
           onPointerEnter={e => {
-            e.currentTarget.style.background = isWarm ? "rgba(200,80,50,0.06)" : "rgba(255,100,80,0.06)";
+            e.currentTarget.style.background = isWarm
+              ? "rgba(200,80,50,0.06)"
+              : "rgba(255,100,80,0.06)";
             e.currentTarget.style.borderColor = "oklch(0.7 0.18 25)";
           }}
           onPointerLeave={e => {
             e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.borderColor = isWarm ? "rgba(200,80,50,0.25)" : "rgba(255,100,80,0.18)";
+            e.currentTarget.style.borderColor = isWarm
+              ? "rgba(200,80,50,0.25)"
+              : "rgba(255,100,80,0.18)";
           }}
         >
           Delete definition
@@ -1120,12 +1211,19 @@ function ScorePanel({
   for (const p of placements) {
     const tt = typeById[p.type];
     if (!tt) continue;
-    perType[p.type] = perType[p.type] || { count: 0, bonus: 0, color: tt.color, name: tt.name, glyph: tt.glyph };
+    perType[p.type] = perType[p.type] || {
+      count: 0,
+      bonus: 0,
+      color: tt.color,
+      name: tt.name,
+      glyph: tt.glyph,
+    };
     perType[p.type].count += 1;
     perType[p.type].bonus += scoreData?.perItem[p.id]?.bonus ?? 0;
   }
 
-  const selectedPlacement = selectedIds.length === 1 ? placements.find(p => p.id === selectedIds[0]) : null;
+  const selectedPlacement =
+    selectedIds.length === 1 ? placements.find(p => p.id === selectedIds[0]) : null;
   const editingTypeId = selectedPlacement?.type ?? selectedTypeId;
   const editingType = editingTypeId ? typeById[editingTypeId] : null;
   const selectedDetail = selectedPlacement ? scoreData?.perItem[selectedPlacement.id] : null;
@@ -1186,7 +1284,9 @@ function ScorePanel({
                       borderRadius: 4,
                       padding: "5px 4px",
                       margin: "0 -4px",
-                      background: isHl ? `color-mix(in oklab, ${info.color} 12%, transparent)` : "transparent",
+                      background: isHl
+                        ? `color-mix(in oklab, ${info.color} 12%, transparent)`
+                        : "transparent",
                       boxShadow: isEditing
                         ? `inset 0 0 0 1px color-mix(in oklab, ${info.color} 55%, transparent)`
                         : "none",
@@ -1207,7 +1307,13 @@ function ScorePanel({
                         transition: "filter 160ms",
                       }}
                     >
-                      <Glyph kind={info.glyph} style={iconStyle || "solid"} color={info.color} w={1} h={1} />
+                      <Glyph
+                        kind={info.glyph}
+                        style={iconStyle || "solid"}
+                        color={info.color}
+                        w={1}
+                        h={1}
+                      />
                     </div>
                     <div style={{ font: "12px/1 Inter, sans-serif", color: fg }}>
                       {info.name} <span style={{ color: fgFaint }}>×{info.count}</span>
@@ -1265,7 +1371,11 @@ function ScorePanel({
         <button onClick={onExport} style={btnStyle(theme, "ghost")}>
           Export
         </button>
-        <button onClick={onOptimize} disabled={optimizing} style={btnStyle(theme, "primary", optimizing)}>
+        <button
+          onClick={onOptimize}
+          disabled={optimizing}
+          style={btnStyle(theme, "primary", optimizing)}
+        >
           {optimizing ? "Solving…" : "Optimize"}
         </button>
       </div>
@@ -1347,7 +1457,11 @@ function InlineStep({ value, onChange, min, max, theme }) {
   const border = isWarm ? "rgba(60,50,40,0.15)" : "rgba(255,255,255,0.1)";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-      <button onClick={() => onChange(Math.max(min, value - 1))} style={inlineStepBtn(theme)} title="Decrease">
+      <button
+        onClick={() => onChange(Math.max(min, value - 1))}
+        style={inlineStepBtn(theme)}
+        title="Decrease"
+      >
         −
       </button>
       <span
@@ -1361,7 +1475,11 @@ function InlineStep({ value, onChange, min, max, theme }) {
       >
         {value}
       </span>
-      <button onClick={() => onChange(Math.min(max, value + 1))} style={inlineStepBtn(theme)} title="Increase">
+      <button
+        onClick={() => onChange(Math.min(max, value + 1))}
+        style={inlineStepBtn(theme)}
+        title="Increase"
+      >
         +
       </button>
     </div>
@@ -1542,7 +1660,15 @@ const OutlineIcon = () => (
 // Show Edges: two connected nodes joined by a clear solid line.
 const EdgesIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <line x1="4.2" y1="4.2" x2="11.8" y2="11.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <line
+      x1="4.2"
+      y1="4.2"
+      x2="11.8"
+      y2="11.8"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
     <circle cx="4.2" cy="4.2" r="2.3" fill="currentColor" />
     <circle cx="11.8" cy="11.8" r="2.3" fill="currentColor" />
   </svg>
@@ -1575,7 +1701,15 @@ const EdgesHoverIcon = () => (
     />
     <circle cx="4.2" cy="4.2" r="2.3" fill="currentColor" opacity="0.85" />
     <circle cx="11.8" cy="11.8" r="2.3" fill="currentColor" opacity="0.85" />
-    <line x1="12.6" y1="3.4" x2="3.4" y2="12.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <line
+      x1="12.6"
+      y1="3.4"
+      x2="3.4"
+      y2="12.6"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+    />
   </svg>
 );
 
@@ -1583,7 +1717,16 @@ const EdgesHoverIcon = () => (
 const HaloIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <rect x="4.5" y="4.5" width="7" height="7" rx="1.4" fill="currentColor" />
-    <rect x="1.8" y="1.8" width="12.4" height="12.4" rx="3" stroke="currentColor" strokeWidth="1.2" opacity="0.5" />
+    <rect
+      x="1.8"
+      y="1.8"
+      width="12.4"
+      height="12.4"
+      rx="3"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      opacity="0.5"
+    />
   </svg>
 );
 
@@ -1742,7 +1885,9 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
     const minY = Math.min(...cells.map(([, y]) => y));
     const normalized = cells.map(([x, y]) => [x - minX, y - minY]);
 
-    const id = (name.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "type_") + Date.now().toString(36).slice(-3);
+    const id =
+      (name.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "type_")
+      + Date.now().toString(36).slice(-3);
     onCreate(
       {
         id,
@@ -1803,7 +1948,12 @@ function NewTypeModal({ open, onClose, onCreate, theme }) {
 
         <div style={{ marginBottom: 16 }}>
           <div style={labelStyle}>Quantity</div>
-          <input type="number" value={count} onChange={e => setCount(e.target.value)} style={inputStyle} />
+          <input
+            type="number"
+            value={count}
+            onChange={e => setCount(e.target.value)}
+            style={inputStyle}
+          />
         </div>
 
         {/* Shape editor */}
@@ -1957,7 +2107,9 @@ function DeleteTypeModal({ open, itemType, placementCount, onConfirm, onClose, t
             <Glyph kind={itemType.glyph} style="solid" color={itemType.color} w={1} h={1} />
           </div>
           <div>
-            <div style={{ font: "600 14px/1.3 Inter, sans-serif", color: fg }}>Delete "{itemType.name}"?</div>
+            <div style={{ font: "600 14px/1.3 Inter, sans-serif", color: fg }}>
+              Delete "{itemType.name}"?
+            </div>
             <div style={{ font: "12px/1.4 Inter, sans-serif", color: fgDim, marginTop: 3 }}>
               This will remove the object definition
               {placementCount > 0
@@ -2058,7 +2210,9 @@ function ShapeConflictModal({ open, itemType, conflictCount, onRemoveConflicts, 
             <Glyph kind={itemType.glyph} style="solid" color={itemType.color} w={1} h={1} />
           </div>
           <div>
-            <div style={{ font: "600 14px/1.3 Inter, sans-serif", color: fg }}>Shape Change Conflict</div>
+            <div style={{ font: "600 14px/1.3 Inter, sans-serif", color: fg }}>
+              Shape Change Conflict
+            </div>
             <div style={{ font: "12px/1.4 Inter, sans-serif", color: fgDim, marginTop: 3 }}>
               The new shape would overlap existing objects
             </div>
@@ -2077,11 +2231,12 @@ function ShapeConflictModal({ open, itemType, conflictCount, onRemoveConflicts, 
           }}
         >
           <div style={{ marginBottom: 6 }}>
-            <strong>{conflictCount}</strong> {itemType.name} instance{conflictCount === 1 ? "" : "s"} would overlap with
-            other objects or go out of bounds.
+            <strong>{conflictCount}</strong> {itemType.name} instance
+            {conflictCount === 1 ? "" : "s"} would overlap with other objects or go out of bounds.
           </div>
           <div style={{ color: fgDim, fontSize: "11px" }}>
-            You can remove the conflicting objects and apply the new shape, or cancel to keep everything as-is.
+            You can remove the conflicting objects and apply the new shape, or cancel to keep
+            everything as-is.
           </div>
         </div>
 
@@ -2254,7 +2409,9 @@ function ShapeEditorModal({ open, itemType, onSave, onClose, theme }) {
                   height: cellSize,
                   border: `1px solid ${isActive ? itemType.color : cellBorder}`,
                   borderRadius: 6,
-                  background: isActive ? `color-mix(in oklab, ${itemType.color} 13%, transparent)` : cellBg,
+                  background: isActive
+                    ? `color-mix(in oklab, ${itemType.color} 13%, transparent)`
+                    : cellBg,
                   cursor: "pointer",
                   transition: "all 140ms ease",
                   position: "relative",
@@ -2359,7 +2516,9 @@ function KeyIcon({ children, theme, wide, large }) {
 function ShortcutsRow({ theme }) {
   const isWarm = theme === "warm";
   const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
-  const Plus = () => <span style={{ margin: "0 4px", color: fgDim, font: "11px/1 Inter, sans-serif" }}>+</span>;
+  const Plus = () => (
+    <span style={{ margin: "0 4px", color: fgDim, font: "11px/1 Inter, sans-serif" }}>+</span>
+  );
   const items = [
     { keys: <KeyIcon theme={theme}>R</KeyIcon>, label: "rotate" },
     {
@@ -2412,7 +2571,10 @@ function ShortcutsRow({ theme }) {
       }}
     >
       {items.map((it, i) => (
-        <div key={i} style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+        <div
+          key={i}
+          style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 6 }}
+        >
           <span style={{ display: "inline-flex", alignItems: "center" }}>{it.keys}</span>
           <span style={{ font: "400 11px/1 Inter, sans-serif", color: fgDim }}>{it.label}</span>
         </div>
