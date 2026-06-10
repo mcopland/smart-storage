@@ -1,0 +1,197 @@
+{
+  "itemTypes": [
+    {
+      "id": "core",
+      "tags": [
+        "Power",
+        "Core"
+      ],
+      "synergies": [
+        {
+          "tag": "Core",
+          "positive": true
+        },
+        {
+          "tag": "Signal",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "relay",
+      "tags": [
+        "Signal"
+      ],
+      "synergies": [
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Link",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "conduit",
+      "tags": [
+        "Signal",
+        "Link"
+      ],
+      "synergies": [
+        {
+          "tag": "Signal",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "capacitor",
+      "tags": [
+        "Storage"
+      ],
+      "synergies": [
+        {
+          "tag": "Link",
+          "positive": true
+        },
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": false
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "sensor",
+      "tags": [
+        "Signal",
+        "Sensor"
+      ],
+      "synergies": [
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": true
+        },
+        {
+          "tag": "Sensor",
+          "positive": false
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "shield",
+      "tags": [
+        "Defense"
+      ],
+      "synergies": [
+        {
+          "tag": "Storage",
+          "positive": true
+        },
+        {
+          "tag": "Power",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    }
+  ],
+  "gridW": 4,
+  "gridH": 4,
+  "disabledCells": [],
+  "placements": [
+    {
+      "id": "s1",
+      "type": "core",
+      "x": 0,
+      "y": 0,
+      "rot": 0
+    }
+  ],
+  "expected": {
+    "total": 0,
+    "perItem": {
+      "s1": {
+        "bonus": 0,
+        "total": 0,
+        "neighbors": []
+      }
+    }
+  }
+}
