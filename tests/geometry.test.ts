@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { allPlacementsFit, fits, getDims, getTypeSize, resizeFit, rotateCells } from "../src/model/geometry";
+import {
+  allPlacementsFit,
+  fits,
+  getDims,
+  getTypeSize,
+  resizeFit,
+  rotateCells,
+} from "../src/model/geometry";
 import type { ItemTypeCore, Placement } from "../src/model/types";
 import fitsFixture from "./fixtures/fits.json";
 import rotations from "./fixtures/rotations.json";
@@ -21,7 +28,15 @@ describe("fits", () => {
   for (const [i, c] of fitsFixture.cases.entries()) {
     it(`case ${i}: ${c.placement.type}@(${c.placement.x},${c.placement.y}) rot ${c.placement.rot} -> ${c.expected}`, () => {
       expect(
-        fits(c.placement as Placement, placements, fitsFixture.gridW, fitsFixture.gridH, c.ignoreId, disabled, typesById),
+        fits(
+          c.placement as Placement,
+          placements,
+          fitsFixture.gridW,
+          fitsFixture.gridH,
+          c.ignoreId,
+          disabled,
+          typesById,
+        ),
       ).toBe(c.expected);
     });
   }

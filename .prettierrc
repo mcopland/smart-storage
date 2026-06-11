@@ -13,6 +13,5 @@
   "singleQuote": false,
   "tabWidth": 2,
   "trailingComma": "all",
-  "useTabs": false,
-  "withNodeModules": false
+  "useTabs": false
 }

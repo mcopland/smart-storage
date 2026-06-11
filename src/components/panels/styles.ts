@@ -3,7 +3,11 @@ import type { CSSProperties } from "react";
 export const ACCENT = "oklch(0.78 0.12 195)";
 export const DANGER = "oklch(0.7 0.18 25)";
 
-export function btnStyle(theme: string, kind: "primary" | "ghost", disabled?: boolean): CSSProperties {
+export function btnStyle(
+  theme: string,
+  kind: "primary" | "ghost",
+  disabled?: boolean,
+): CSSProperties {
   const isWarm = theme === "warm";
   if (kind === "primary") {
     return {

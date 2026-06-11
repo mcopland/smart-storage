@@ -12,7 +12,13 @@ export interface ShapeEditorModalProps {
 }
 
 // Shape Editor Modal (5x5 grid for custom shapes)
-export function ShapeEditorModal({ open, itemType, onSave, onClose, theme }: ShapeEditorModalProps) {
+export function ShapeEditorModal({
+  open,
+  itemType,
+  onSave,
+  onClose,
+  theme,
+}: ShapeEditorModalProps) {
   const isWarm = theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
   const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
