@@ -5,6 +5,7 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
+use crate::anneal::OptimizerSession;
 use crate::model::Layout;
 use crate::score::calc_score;
 
@@ -26,4 +27,32 @@ pub fn score(layout: JsValue) -> Result<JsValue, JsValue> {
     calc_score(&layout)
         .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|e| JsValue::from_str(&format!("score: failed to serialize result: {e}")))
+}
+
+/// Chunked simulated-annealing session over a layout's placements.
+#[wasm_bindgen]
+pub struct Optimizer {
+    session: OptimizerSession,
+}
+
+#[wasm_bindgen]
+impl Optimizer {
+    #[wasm_bindgen(constructor)]
+    pub fn new(layout: JsValue, seed: u32, total_iters: u32) -> Result<Optimizer, JsValue> {
+        let layout: Layout = serde_wasm_bindgen::from_value(layout)
+            .map_err(|e| JsValue::from_str(&format!("optimizer: failed to parse layout: {e}")))?;
+        let session =
+            OptimizerSession::new(&layout, seed, total_iters).map_err(|e| JsValue::from_str(&e))?;
+        Ok(Optimizer { session })
+    }
+
+    /// Run up to `n` more iterations; returns `{ placements, score, done, itersDone }`.
+    pub fn step(&mut self, n: u32) -> Result<JsValue, JsValue> {
+        self.session
+            .step(n)
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| {
+                JsValue::from_str(&format!("optimizer: failed to serialize progress: {e}"))
+            })
+    }
 }

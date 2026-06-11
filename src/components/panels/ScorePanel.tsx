@@ -1,7 +1,7 @@
 import { findClusters } from "../../model/clusters";
 import type { CatalogById, Inventory, ItemType, Placement, ScoreResult } from "../../model/types";
 import { Glyph } from "../Glyph";
-import { BULLET, ELLIPSIS, TIMES } from "./chars";
+import { BULLET, TIMES } from "./chars";
 import { PanelSection } from "./PanelSection";
 import { SelectedEditor } from "./SelectedEditor";
 import { ACCENT, btnStyle, DANGER } from "./styles";
@@ -235,12 +235,9 @@ export function ScorePanel({
         <button onClick={onExport} style={btnStyle(theme, "ghost")}>
           Export
         </button>
-        <button
-          onClick={onOptimize}
-          disabled={optimizing}
-          style={btnStyle(theme, "primary", optimizing)}
-        >
-          {optimizing ? `Solving${ELLIPSIS}` : "Optimize"}
+        {/* While solving, the same button cancels the run. */}
+        <button onClick={onOptimize} style={btnStyle(theme, "primary")}>
+          {optimizing ? "Cancel" : "Optimize"}
         </button>
       </div>
     </div>

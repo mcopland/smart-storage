@@ -12,6 +12,7 @@ import { ShortcutsRow } from "./components/panels/ShortcutsRow";
 import { Tray } from "./components/panels/Tray";
 import { trayMetrics } from "./components/panels/trayMetrics";
 import { ZoomSlider } from "./components/panels/ZoomSlider";
+import { startOptimizer, type OptimizeHandle } from "./engine/optimizer";
 import { engineScore } from "./engine/wasm";
 import { INITIAL_INVENTORY, INITIAL_PLACEMENTS, ITEM_TYPES } from "./model/catalog";
 import { cellsOf, fits, resizeFit } from "./model/geometry";
@@ -451,56 +452,38 @@ export function App() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  // Temporary random-restart optimizer, ported as-is from the prototype.
-  // Replaced by the Rust/WASM simulated-annealing engine in a later phase.
-  const onOptimize = async () => {
-    if (optimizing) return;
+  // Simulated annealing in the Rust/WASM engine, run in a Web Worker. Each
+  // progress chunk applies the best layout found so far, so the board animates
+  // toward the result; clicking again while running cancels (the last applied
+  // layout stands).
+  const optimizeHandleRef = useRef<OptimizeHandle | null>(null);
+  const onOptimize = () => {
+    if (optimizing) {
+      optimizeHandleRef.current?.cancel();
+      optimizeHandleRef.current = null;
+      setOptimizing(false);
+      return;
+    }
+    if (placements.length === 0) return;
     setOptimizing(true);
     setSelectedIds([]);
     setSelectedTypeId(null);
-    let best = { placements, score: scoreData.total };
-    const trials = 14;
-    for (let i = 0; i < trials; i++) {
-      const shuffled = [...best.placements].sort(() => Math.random() - 0.5);
-      const placed: Placement[] = [];
-      for (const p of shuffled) {
-        let chosen: Placement | null = null;
-        for (let k = 0; k < 12; k++) {
-          const dx = Math.floor((Math.random() - 0.5) * 6);
-          const dy = Math.floor((Math.random() - 0.5) * 6);
-          const tryP = {
-            ...p,
-            x: Math.max(0, Math.min(gridW - 1, p.x + dx)),
-            y: Math.max(0, Math.min(gridH - 1, p.y + dy)),
-          };
-          if (fits(tryP, placed, gridW, gridH, p.id, disabledCells, typeById)) {
-            chosen = tryP;
-            break;
-          }
+    optimizeHandleRef.current = startOptimizer(
+      { itemTypes, gridW, gridH, disabledCells: Array.from(disabledCells), placements },
+      { seed: Date.now() >>> 0, totalIters: 200_000, chunkIters: 5_000, chunkDelayMs: 30 },
+      progress => {
+        setPlacements(progress.placements);
+        if (progress.done) {
+          optimizeHandleRef.current = null;
+          setOptimizing(false);
         }
-        if (!chosen) {
-          if (fits(p, placed, gridW, gridH, p.id, disabledCells, typeById)) chosen = p;
-          else {
-            outer: for (let y = 0; y < gridH; y++)
-              for (let x = 0; x < gridW; x++) {
-                const tryP = { ...p, x, y };
-                if (fits(tryP, placed, gridW, gridH, p.id, disabledCells, typeById)) {
-                  chosen = tryP;
-                  break outer;
-                }
-              }
-          }
-        }
-        if (chosen) placed.push(chosen);
-      }
-      const s = engineScore({ itemTypes, gridW, gridH, placements: placed }).total;
-      if (s > best.score) best = { placements: placed, score: s };
-      setPlacements(placed);
-      await new Promise(r => setTimeout(r, 90));
-    }
-    setPlacements(best.placements);
-    await new Promise(r => setTimeout(r, 120));
-    setOptimizing(false);
+      },
+      message => {
+        console.error(`Optimize failed: ${message}`);
+        optimizeHandleRef.current = null;
+        setOptimizing(false);
+      },
+    );
   };
 
   const isWarm = t.theme === "warm";
