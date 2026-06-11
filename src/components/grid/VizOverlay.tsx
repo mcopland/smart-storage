@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { adjacent, getShapeCells } from "../../model/geometry";
-import { tagSynergy } from "../../model/score";
-import type { CatalogById, Placement } from "../../model/types";
+import { getShapeCells } from "../../model/geometry";
+import type { CatalogById, Placement, ScoreResult } from "../../model/types";
 import { glyphBox, pickGlyphCell } from "./shapeOutline";
 
 export interface VizOverlayProps {
   placements: Placement[];
+  scoreData: ScoreResult | null;
   cell: number;
   gap: number;
   gridW: number;
@@ -26,6 +26,7 @@ interface AdjPair {
 // Visualization overlays
 export function VizOverlay({
   placements,
+  scoreData,
   cell,
   gap,
   gridW,
@@ -62,21 +63,25 @@ export function VizOverlay({
     };
   };
 
+  // Adjacency and per-pair deltas come straight from the engine's score
+  // breakdown: each adjacent pair appears in both items' neighbor lists, and
+  // the edge delta is the sum of the two directed contributions.
   const adjPairs = useMemo(() => {
+    if (!scoreData) return [];
+    const byId = new Map(placements.map(p => [p.id, p]));
     const out: AdjPair[] = [];
-    for (let i = 0; i < placements.length; i++) {
-      for (let j = i + 1; j < placements.length; j++) {
-        if (adjacent(placements[i], placements[j], typesById)) {
-          const ta = typesById[placements[i].type];
-          const tb = typesById[placements[j].type];
-          const da = tagSynergy(ta, tb);
-          const db = tagSynergy(tb, ta);
-          out.push({ a: placements[i], b: placements[j], delta: da + db });
-        }
+    for (const [idA, entry] of Object.entries(scoreData.perItem)) {
+      for (const n of entry.neighbors) {
+        if (idA >= n.id) continue; // each pair appears twice; keep one direction
+        const a = byId.get(idA);
+        const b = byId.get(n.id);
+        if (!a || !b) continue;
+        const back = scoreData.perItem[n.id]?.neighbors.find(m => m.id === idA);
+        out.push({ a, b, delta: n.delta + (back?.delta ?? 0) });
       }
     }
     return out;
-  }, [placements, typesById]);
+  }, [placements, scoreData]);
 
   return (
     <svg

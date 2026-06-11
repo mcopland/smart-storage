@@ -12,9 +12,9 @@ import { ShortcutsRow } from "./components/panels/ShortcutsRow";
 import { Tray } from "./components/panels/Tray";
 import { trayMetrics } from "./components/panels/trayMetrics";
 import { ZoomSlider } from "./components/panels/ZoomSlider";
+import { engineScore } from "./engine/wasm";
 import { INITIAL_INVENTORY, INITIAL_PLACEMENTS, ITEM_TYPES } from "./model/catalog";
 import { cellsOf, fits, resizeFit } from "./model/geometry";
-import { calcScore } from "./model/score";
 import type { Cell, GridSize, Inventory, ItemType, Placement } from "./model/types";
 import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
 
@@ -175,7 +175,12 @@ export function App() {
   );
   const cell = Math.round(baseCell * (zoom / 100));
 
-  const scoreData = useMemo(() => calcScore(placements, typeById), [placements, typeById]);
+  // Scoring lives in the Rust/WASM engine (single source of truth); calls are
+  // synchronous and cheap, so the live score recomputes on every change.
+  const scoreData = useMemo(
+    () => engineScore({ itemTypes, gridW, gridH, placements }),
+    [itemTypes, gridW, gridH, placements],
+  );
 
   useEffect(() => {
     document.body.className = `theme-${t.theme}`;
@@ -488,7 +493,7 @@ export function App() {
         }
         if (chosen) placed.push(chosen);
       }
-      const s = calcScore(placed, typeById).total;
+      const s = engineScore({ itemTypes, gridW, gridH, placements: placed }).total;
       if (s > best.score) best = { placements: placed, score: s };
       setPlacements(placed);
       await new Promise(r => setTimeout(r, 90));

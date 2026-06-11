@@ -405,6 +405,7 @@ export function GridSurface({
       {(vizMode === "edges" || vizMode === "focus" || vizMode === "lines") && (
         <VizOverlay
           placements={placements}
+          scoreData={scoreData}
           cell={cell}
           gap={gap}
           gridW={gridW}
@@ -479,7 +480,13 @@ export function GridSurface({
                   pointerEvents: "none",
                 }}
               >
-                <Glyph kind={ghostType.glyph} style={iconStyle} color={ghostType.color} w={1} h={1} />
+                <Glyph
+                  kind={ghostType.glyph}
+                  style={iconStyle}
+                  color={ghostType.color}
+                  w={1}
+                  h={1}
+                />
               </div>
             </div>
           );

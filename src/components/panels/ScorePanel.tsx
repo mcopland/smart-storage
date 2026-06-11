@@ -1,4 +1,4 @@
-import { findClusters } from "../../model/score";
+import { findClusters } from "../../model/clusters";
 import type { CatalogById, Inventory, ItemType, Placement, ScoreResult } from "../../model/types";
 import { Glyph } from "../Glyph";
 import { BULLET, ELLIPSIS, TIMES } from "./chars";
