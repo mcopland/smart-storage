@@ -16,6 +16,7 @@ import { startOptimizer, type OptimizeHandle } from "./engine/optimizer";
 import { engineScore } from "./engine/wasm";
 import { INITIAL_INVENTORY, INITIAL_PLACEMENTS, ITEM_TYPES } from "./model/catalog";
 import { cellsOf, fits, resizeFit } from "./model/geometry";
+import { parseImportedLayout } from "./model/importLayout";
 import type { Cell, GridSize, Inventory, ItemType, Placement } from "./model/types";
 import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
 
@@ -24,27 +25,6 @@ interface ShapeConflict {
   newCells: Cell[];
   conflicts: Placement[];
   itemType: ItemType | undefined;
-}
-
-interface ImportedLayout {
-  gridSize?: GridSize;
-  placements?: Placement[];
-  disabledCells?: string[];
-  itemTypes?: ItemType[];
-  inventory?: Inventory;
-}
-
-// Older exports stored rectangular shapes as `size: [w, h]` instead of `cells`.
-// Normalize at the import boundary so the rest of the app only ever sees `cells`.
-function normalizeImportedTypes(types: (ItemType & { size?: [number, number] })[]): ItemType[] {
-  return types.map(t => {
-    if (t.cells && t.cells.length > 0) return t;
-    const [w, h] = t.size || [1, 1];
-    const cells: Cell[] = [];
-    for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) cells.push([dx, dy]);
-    const { size: _legacySize, ...rest } = t;
-    return { ...rest, cells };
-  });
 }
 
 export function App() {
@@ -415,17 +395,21 @@ export function App() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const data = JSON.parse(reader.result as string) as ImportedLayout;
+        const data = parseImportedLayout(reader.result as string, itemTypes);
         if (data.gridSize) setGridSize(data.gridSize);
-        if (Array.isArray(data.placements)) setPlacements(data.placements);
-        if (Array.isArray(data.disabledCells)) setDisabledCells(new Set(data.disabledCells));
-        if (Array.isArray(data.itemTypes)) setItemTypes(normalizeImportedTypes(data.itemTypes));
+        if (data.placements) setPlacements(data.placements);
+        if (data.disabledCells) setDisabledCells(new Set(data.disabledCells));
+        if (data.itemTypes) setItemTypes(data.itemTypes);
         if (data.inventory) setInventory(data.inventory);
         setSelectedIds([]);
         setSelectedTypeId(null);
       } catch (err) {
         console.error(`Import failed for "${file.name}":`, err);
-        alert(`Could not parse layout file "${file.name}".`);
+        alert(
+          err instanceof Error
+            ? `"${file.name}": ${err.message}`
+            : `Could not import "${file.name}".`,
+        );
       }
     };
     reader.readAsText(file);

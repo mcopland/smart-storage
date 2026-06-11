@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initEngine } from "./engine/wasm";
 
 const rootEl = document.getElementById("root");
@@ -18,7 +19,9 @@ async function bootstrap(root: HTMLElement): Promise<void> {
   }
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>,
   );
 }
