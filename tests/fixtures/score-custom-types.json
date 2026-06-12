@@ -1,0 +1,145 @@
+{
+  "itemTypes": [
+    {
+      "id": "alpha",
+      "tags": [
+        "A",
+        "B"
+      ],
+      "synergies": [
+        {
+          "tag": "B",
+          "positive": true
+        },
+        {
+          "tag": "C",
+          "positive": false
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "id": "beta",
+      "tags": [
+        "B",
+        "C"
+      ],
+      "synergies": [
+        {
+          "tag": "A",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "gamma",
+      "tags": [
+        "C"
+      ],
+      "synergies": [],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    }
+  ],
+  "gridW": 6,
+  "gridH": 6,
+  "disabledCells": [],
+  "placements": [
+    {
+      "id": "c1",
+      "type": "alpha",
+      "x": 1,
+      "y": 1,
+      "rot": 90
+    },
+    {
+      "id": "c2",
+      "type": "beta",
+      "x": 1,
+      "y": 0,
+      "rot": 0
+    },
+    {
+      "id": "c3",
+      "type": "gamma",
+      "x": 1,
+      "y": 3,
+      "rot": 270
+    },
+    {
+      "id": "c4",
+      "type": "beta",
+      "x": 4,
+      "y": 4,
+      "rot": 0
+    }
+  ],
+  "expected": {
+    "total": 1,
+    "perItem": {
+      "c1": {
+        "bonus": 0,
+        "total": 0,
+        "neighbors": [
+          {
+            "id": "c2",
+            "type": "beta",
+            "delta": 0
+          }
+        ]
+      },
+      "c2": {
+        "bonus": 1,
+        "total": 1,
+        "neighbors": [
+          {
+            "id": "c1",
+            "type": "alpha",
+            "delta": 1
+          }
+        ]
+      },
+      "c3": {
+        "bonus": 0,
+        "total": 0,
+        "neighbors": []
+      },
+      "c4": {
+        "bonus": 0,
+        "total": 0,
+        "neighbors": []
+      }
+    }
+  }
+}

@@ -1,0 +1,653 @@
+{
+  "itemTypes": [
+    {
+      "id": "core",
+      "tags": [
+        "Power",
+        "Core"
+      ],
+      "synergies": [
+        {
+          "tag": "Core",
+          "positive": true
+        },
+        {
+          "tag": "Signal",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "relay",
+      "tags": [
+        "Signal"
+      ],
+      "synergies": [
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Link",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "conduit",
+      "tags": [
+        "Signal",
+        "Link"
+      ],
+      "synergies": [
+        {
+          "tag": "Signal",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "capacitor",
+      "tags": [
+        "Storage"
+      ],
+      "synergies": [
+        {
+          "tag": "Link",
+          "positive": true
+        },
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": false
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "sensor",
+      "tags": [
+        "Signal",
+        "Sensor"
+      ],
+      "synergies": [
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": true
+        },
+        {
+          "tag": "Sensor",
+          "positive": false
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "shield",
+      "tags": [
+        "Defense"
+      ],
+      "synergies": [
+        {
+          "tag": "Storage",
+          "positive": true
+        },
+        {
+          "tag": "Power",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "alpha",
+      "tags": [
+        "A",
+        "B"
+      ],
+      "synergies": [
+        {
+          "tag": "B",
+          "positive": true
+        },
+        {
+          "tag": "C",
+          "positive": false
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "id": "beta",
+      "tags": [
+        "B",
+        "C"
+      ],
+      "synergies": [
+        {
+          "tag": "A",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "gamma",
+      "tags": [
+        "C"
+      ],
+      "synergies": [],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "from": "core",
+      "to": "core",
+      "expected": 1
+    },
+    {
+      "from": "core",
+      "to": "relay",
+      "expected": 1
+    },
+    {
+      "from": "core",
+      "to": "conduit",
+      "expected": 1
+    },
+    {
+      "from": "core",
+      "to": "capacitor",
+      "expected": 0
+    },
+    {
+      "from": "core",
+      "to": "sensor",
+      "expected": 1
+    },
+    {
+      "from": "core",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "core",
+      "to": "alpha",
+      "expected": 0
+    },
+    {
+      "from": "core",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "core",
+      "to": "gamma",
+      "expected": 0
+    },
+    {
+      "from": "relay",
+      "to": "core",
+      "expected": 1
+    },
+    {
+      "from": "relay",
+      "to": "relay",
+      "expected": 0
+    },
+    {
+      "from": "relay",
+      "to": "conduit",
+      "expected": 1
+    },
+    {
+      "from": "relay",
+      "to": "capacitor",
+      "expected": 0
+    },
+    {
+      "from": "relay",
+      "to": "sensor",
+      "expected": 0
+    },
+    {
+      "from": "relay",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "relay",
+      "to": "alpha",
+      "expected": 0
+    },
+    {
+      "from": "relay",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "relay",
+      "to": "gamma",
+      "expected": 0
+    },
+    {
+      "from": "conduit",
+      "to": "core",
+      "expected": 0
+    },
+    {
+      "from": "conduit",
+      "to": "relay",
+      "expected": 1
+    },
+    {
+      "from": "conduit",
+      "to": "conduit",
+      "expected": 1
+    },
+    {
+      "from": "conduit",
+      "to": "capacitor",
+      "expected": 1
+    },
+    {
+      "from": "conduit",
+      "to": "sensor",
+      "expected": 1
+    },
+    {
+      "from": "conduit",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "conduit",
+      "to": "alpha",
+      "expected": 0
+    },
+    {
+      "from": "conduit",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "conduit",
+      "to": "gamma",
+      "expected": 0
+    },
+    {
+      "from": "capacitor",
+      "to": "core",
+      "expected": 1
+    },
+    {
+      "from": "capacitor",
+      "to": "relay",
+      "expected": 0
+    },
+    {
+      "from": "capacitor",
+      "to": "conduit",
+      "expected": 1
+    },
+    {
+      "from": "capacitor",
+      "to": "capacitor",
+      "expected": -1
+    },
+    {
+      "from": "capacitor",
+      "to": "sensor",
+      "expected": 0
+    },
+    {
+      "from": "capacitor",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "capacitor",
+      "to": "alpha",
+      "expected": 0
+    },
+    {
+      "from": "capacitor",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "capacitor",
+      "to": "gamma",
+      "expected": 0
+    },
+    {
+      "from": "sensor",
+      "to": "core",
+      "expected": 1
+    },
+    {
+      "from": "sensor",
+      "to": "relay",
+      "expected": 0
+    },
+    {
+      "from": "sensor",
+      "to": "conduit",
+      "expected": 0
+    },
+    {
+      "from": "sensor",
+      "to": "capacitor",
+      "expected": 1
+    },
+    {
+      "from": "sensor",
+      "to": "sensor",
+      "expected": -1
+    },
+    {
+      "from": "sensor",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "sensor",
+      "to": "alpha",
+      "expected": 0
+    },
+    {
+      "from": "sensor",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "sensor",
+      "to": "gamma",
+      "expected": 0
+    },
+    {
+      "from": "shield",
+      "to": "core",
+      "expected": 1
+    },
+    {
+      "from": "shield",
+      "to": "relay",
+      "expected": 0
+    },
+    {
+      "from": "shield",
+      "to": "conduit",
+      "expected": 0
+    },
+    {
+      "from": "shield",
+      "to": "capacitor",
+      "expected": 1
+    },
+    {
+      "from": "shield",
+      "to": "sensor",
+      "expected": 0
+    },
+    {
+      "from": "shield",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "shield",
+      "to": "alpha",
+      "expected": 0
+    },
+    {
+      "from": "shield",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "shield",
+      "to": "gamma",
+      "expected": 0
+    },
+    {
+      "from": "alpha",
+      "to": "core",
+      "expected": 0
+    },
+    {
+      "from": "alpha",
+      "to": "relay",
+      "expected": 0
+    },
+    {
+      "from": "alpha",
+      "to": "conduit",
+      "expected": 0
+    },
+    {
+      "from": "alpha",
+      "to": "capacitor",
+      "expected": 0
+    },
+    {
+      "from": "alpha",
+      "to": "sensor",
+      "expected": 0
+    },
+    {
+      "from": "alpha",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "alpha",
+      "to": "alpha",
+      "expected": 1
+    },
+    {
+      "from": "alpha",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "alpha",
+      "to": "gamma",
+      "expected": -1
+    },
+    {
+      "from": "beta",
+      "to": "core",
+      "expected": 0
+    },
+    {
+      "from": "beta",
+      "to": "relay",
+      "expected": 0
+    },
+    {
+      "from": "beta",
+      "to": "conduit",
+      "expected": 0
+    },
+    {
+      "from": "beta",
+      "to": "capacitor",
+      "expected": 0
+    },
+    {
+      "from": "beta",
+      "to": "sensor",
+      "expected": 0
+    },
+    {
+      "from": "beta",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "beta",
+      "to": "alpha",
+      "expected": 1
+    },
+    {
+      "from": "beta",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "beta",
+      "to": "gamma",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "core",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "relay",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "conduit",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "capacitor",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "sensor",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "shield",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "alpha",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "beta",
+      "expected": 0
+    },
+    {
+      "from": "gamma",
+      "to": "gamma",
+      "expected": 0
+    }
+  ]
+}

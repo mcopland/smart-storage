@@ -1,0 +1,348 @@
+{
+  "itemTypes": [
+    {
+      "id": "core",
+      "tags": [
+        "Power",
+        "Core"
+      ],
+      "synergies": [
+        {
+          "tag": "Core",
+          "positive": true
+        },
+        {
+          "tag": "Signal",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "relay",
+      "tags": [
+        "Signal"
+      ],
+      "synergies": [
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Link",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "conduit",
+      "tags": [
+        "Signal",
+        "Link"
+      ],
+      "synergies": [
+        {
+          "tag": "Signal",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "capacitor",
+      "tags": [
+        "Storage"
+      ],
+      "synergies": [
+        {
+          "tag": "Link",
+          "positive": true
+        },
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": false
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "sensor",
+      "tags": [
+        "Signal",
+        "Sensor"
+      ],
+      "synergies": [
+        {
+          "tag": "Power",
+          "positive": true
+        },
+        {
+          "tag": "Storage",
+          "positive": true
+        },
+        {
+          "tag": "Sensor",
+          "positive": false
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "shield",
+      "tags": [
+        "Defense"
+      ],
+      "synergies": [
+        {
+          "tag": "Storage",
+          "positive": true
+        },
+        {
+          "tag": "Power",
+          "positive": true
+        }
+      ],
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    }
+  ],
+  "gridW": 10,
+  "gridH": 10,
+  "disabledCells": [],
+  "placements": [
+    {
+      "id": "p1",
+      "type": "core",
+      "x": 3,
+      "y": 3,
+      "rot": 0
+    },
+    {
+      "id": "p2",
+      "type": "relay",
+      "x": 4,
+      "y": 3,
+      "rot": 0
+    },
+    {
+      "id": "p3",
+      "type": "core",
+      "x": 5,
+      "y": 3,
+      "rot": 0
+    },
+    {
+      "id": "p4",
+      "type": "sensor",
+      "x": 3,
+      "y": 4,
+      "rot": 0
+    },
+    {
+      "id": "p5",
+      "type": "sensor",
+      "x": 5,
+      "y": 4,
+      "rot": 0
+    },
+    {
+      "id": "p6",
+      "type": "conduit",
+      "x": 3,
+      "y": 5,
+      "rot": 0
+    },
+    {
+      "id": "p7",
+      "type": "capacitor",
+      "x": 6,
+      "y": 3,
+      "rot": 0
+    },
+    {
+      "id": "p8",
+      "type": "shield",
+      "x": 6,
+      "y": 6,
+      "rot": 0
+    }
+  ],
+  "expected": {
+    "total": 10,
+    "perItem": {
+      "p1": {
+        "bonus": 2,
+        "total": 2,
+        "neighbors": [
+          {
+            "id": "p2",
+            "type": "relay",
+            "delta": 1
+          },
+          {
+            "id": "p4",
+            "type": "sensor",
+            "delta": 1
+          }
+        ]
+      },
+      "p2": {
+        "bonus": 2,
+        "total": 2,
+        "neighbors": [
+          {
+            "id": "p1",
+            "type": "core",
+            "delta": 1
+          },
+          {
+            "id": "p3",
+            "type": "core",
+            "delta": 1
+          }
+        ]
+      },
+      "p3": {
+        "bonus": 2,
+        "total": 2,
+        "neighbors": [
+          {
+            "id": "p2",
+            "type": "relay",
+            "delta": 1
+          },
+          {
+            "id": "p5",
+            "type": "sensor",
+            "delta": 1
+          },
+          {
+            "id": "p7",
+            "type": "capacitor",
+            "delta": 0
+          }
+        ]
+      },
+      "p4": {
+        "bonus": 1,
+        "total": 1,
+        "neighbors": [
+          {
+            "id": "p1",
+            "type": "core",
+            "delta": 1
+          },
+          {
+            "id": "p6",
+            "type": "conduit",
+            "delta": 0
+          }
+        ]
+      },
+      "p5": {
+        "bonus": 1,
+        "total": 1,
+        "neighbors": [
+          {
+            "id": "p3",
+            "type": "core",
+            "delta": 1
+          }
+        ]
+      },
+      "p6": {
+        "bonus": 1,
+        "total": 1,
+        "neighbors": [
+          {
+            "id": "p4",
+            "type": "sensor",
+            "delta": 1
+          }
+        ]
+      },
+      "p7": {
+        "bonus": 1,
+        "total": 1,
+        "neighbors": [
+          {
+            "id": "p3",
+            "type": "core",
+            "delta": 1
+          }
+        ]
+      },
+      "p8": {
+        "bonus": 0,
+        "total": 0,
+        "neighbors": []
+      }
+    }
+  }
+}
