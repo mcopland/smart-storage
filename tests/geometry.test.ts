@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   allPlacementsFit,
+  findFirstFit,
   fits,
   getDims,
   getTypeSize,
@@ -99,5 +100,69 @@ describe("allPlacementsFit / resizeFit", () => {
 
   it("resizeFit returns null when the occupied span cannot fit", () => {
     expect(resizeFit([p("a", 0, 0), p("b", 4, 0)], new Set<string>(), 4, 4, typesById)).toBeNull();
+  });
+});
+
+describe("findFirstFit", () => {
+  // 1x1 single-cell type used in most cases.
+  const dot: ItemTypeCore = { id: "dot", tags: [], synergies: [], cells: [[0, 0]] };
+  // 1x2 horizontal bar -- does NOT fit when only one column wide but fits rotated.
+  const hbar: ItemTypeCore = {
+    id: "hbar",
+    tags: [],
+    synergies: [],
+    cells: [
+      [0, 0],
+      [1, 0],
+    ],
+  };
+  const typesById = { dot, hbar };
+
+  it("returns top-left (0,0) rot-0 placement when the grid is empty", () => {
+    const result = findFirstFit("dot", "x1", [], 4, 4, new Set(), typesById);
+    expect(result).toMatchObject({ type: "dot", x: 0, y: 0, rot: 0 });
+  });
+
+  it("returns the assigned id, not a generated one", () => {
+    const result = findFirstFit("dot", "my-id", [], 4, 4, new Set(), typesById);
+    expect(result?.id).toBe("my-id");
+  });
+
+  it("skips occupied cells and returns the first free spot", () => {
+    const placed: Placement[] = [
+      { id: "a", type: "dot", x: 0, y: 0, rot: 0 },
+      { id: "b", type: "dot", x: 1, y: 0, rot: 0 },
+    ];
+    const result = findFirstFit("dot", "x2", placed, 4, 4, new Set(), typesById);
+    expect(result).toMatchObject({ x: 2, y: 0, rot: 0 });
+  });
+
+  it("skips disabled cells", () => {
+    // Top row fully disabled; first free spot should be (0,1).
+    const disabled = new Set(["0,0", "1,0", "2,0", "3,0"]);
+    const result = findFirstFit("dot", "x3", [], 4, 4, disabled, typesById);
+    expect(result).toMatchObject({ x: 0, y: 1 });
+  });
+
+  it("tries rotations and returns a rotated placement when the base orientation does not fit", () => {
+    // Grid is 1 column wide -- a 1x2 hbar only fits as rot 90 (becomes 2 rows tall).
+    const result = findFirstFit("hbar", "x4", [], 1, 4, new Set(), typesById);
+    expect(result).not.toBeNull();
+    expect(result?.rot).not.toBe(0); // must be rotated
+  });
+
+  it("returns null when every cell is occupied", () => {
+    const placed: Placement[] = [
+      { id: "a", type: "dot", x: 0, y: 0, rot: 0 },
+      { id: "b", type: "dot", x: 1, y: 0, rot: 0 },
+      { id: "c", type: "dot", x: 0, y: 1, rot: 0 },
+      { id: "d", type: "dot", x: 1, y: 1, rot: 0 },
+    ];
+    expect(findFirstFit("dot", "x5", placed, 2, 2, new Set(), typesById)).toBeNull();
+  });
+
+  it("returns null when every cell is disabled", () => {
+    const disabled = new Set(["0,0", "1,0", "0,1", "1,1"]);
+    expect(findFirstFit("dot", "x6", [], 2, 2, disabled, typesById)).toBeNull();
   });
 });

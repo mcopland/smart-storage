@@ -76,6 +76,29 @@ export function fits(
   return true;
 }
 
+// Scan row-major, trying all four rotations per cell, and return the first
+// Placement that fits. Delegates entirely to `fits` so disabled cells,
+// out-of-bounds checks, and occupancy are all handled consistently.
+export function findFirstFit(
+  type: string,
+  id: string,
+  placed: Placement[],
+  gridW: number,
+  gridH: number,
+  disabledCells: Set<string>,
+  typesById: TypesById,
+): Placement | null {
+  for (let y = 0; y < gridH; y++) {
+    for (let x = 0; x < gridW; x++) {
+      for (const rot of [0, 90, 180, 270]) {
+        const tryP: Placement = { id, type, x, y, rot };
+        if (fits(tryP, placed, gridW, gridH, id, disabledCells, typesById)) return tryP;
+      }
+    }
+  }
+  return null;
+}
+
 export function adjacent(a: Placement, b: Placement, typesById: TypesById): boolean {
   const cellsA = cellsOf(a, typesById);
   const cellsB = new Set(cellsOf(b, typesById).map(([x, y]) => `${x},${y}`));
