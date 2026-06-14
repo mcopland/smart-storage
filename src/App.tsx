@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { GridSurface, type TrayDrag } from "./components/grid/GridSurface";
 import { PannableContainer } from "./components/PannableContainer";
 import { DeleteTypeModal } from "./components/panels/DeleteTypeModal";
@@ -12,13 +12,14 @@ import { ShortcutsRow } from "./components/panels/ShortcutsRow";
 import { Tray } from "./components/panels/Tray";
 import { trayMetrics } from "./components/panels/trayMetrics";
 import { ZoomSlider } from "./components/panels/ZoomSlider";
-import { startOptimizer, type OptimizeHandle } from "./engine/optimizer";
 import { engineScore } from "./engine/wasm";
 import { INITIAL_INVENTORY, INITIAL_PLACEMENTS, ITEM_TYPES } from "./model/catalog";
-import { cellsOf, fits, resizeFit } from "./model/geometry";
-import { parseImportedLayout } from "./model/importLayout";
+import { cellsOf, findFirstFit, fits, resizeFit } from "./model/geometry";
 import type { Cell, GridSize, Inventory, ItemType, Placement } from "./model/types";
 import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
+import { useGridSizing } from "./useGridSizing";
+import { useLayoutIO } from "./useLayoutIO";
+import { useOptimizer } from "./useOptimizer";
 
 interface ShapeConflict {
   typeId: string;
@@ -38,7 +39,6 @@ export function App() {
   const [highlightedTypeId, setHighlightedTypeId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [draggingFromTray, setDraggingFromTray] = useState<TrayDrag | null>(null);
-  const [optimizing, setOptimizing] = useState(false);
   const [disabledCells, setDisabledCells] = useState<Set<string>>(new Set());
   const [itemTypes, setItemTypes] = useState<ItemType[]>(ITEM_TYPES);
   const [newTypeOpen, setNewTypeOpen] = useState(false);
@@ -130,31 +130,8 @@ export function App() {
   }, [shapeConflict]);
 
   // Compute cell size: at zoom=100% the grid fits the container.
-  const gridContainerRef = useRef<HTMLElement>(null);
-  const [containerSize, setContainerSize] = useState({ w: 800, h: 600 });
-  useEffect(() => {
-    const el = gridContainerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(entries => {
-      const r = entries[0].contentRect;
-      if (r.width > 0 && r.height > 0) setContainerSize({ w: r.width, h: r.height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   const zoom = t.zoom ?? 100;
-  const wsPad = 18;
-  const availW = containerSize.w - 64 - wsPad * 2 - 2;
-  const availH = containerSize.h - 64 - wsPad * 2 - 2 - 70 - 42; // extra 42 for controls bar + label
-  const baseCell = Math.max(
-    12,
-    Math.min(
-      Math.floor((availW - (gridW - 1) * gap) / gridW),
-      Math.floor((availH - (gridH - 1) * gap) / gridH),
-    ),
-  );
-  const cell = Math.round(baseCell * (zoom / 100));
+  const { containerRef: gridContainerRef, cell, wsPad } = useGridSizing(gridW, gridH, gap, zoom);
 
   // Scoring lives in the Rust/WASM engine (single source of truth); calls are
   // synchronous and cheap, so the live score recomputes on every change.
@@ -328,24 +305,16 @@ export function App() {
   // first free spot it fits (any rotation). Mirrors the per-type half of Place all.
   const onAddItem = useCallback(() => {
     if (!selectedTypeId) return;
-    let chosen: Placement | null = null;
-    outer: for (let y = 0; y < gridH; y++) {
-      for (let x = 0; x < gridW; x++) {
-        for (const rot of [0, 90, 180, 270]) {
-          const tryP = {
-            id: "ai" + Date.now() + Math.floor(Math.random() * 999),
-            type: selectedTypeId,
-            x,
-            y,
-            rot,
-          };
-          if (fits(tryP, placements, gridW, gridH, tryP.id, disabledCells, typeById)) {
-            chosen = tryP;
-            break outer;
-          }
-        }
-      }
-    }
+    const id = "ai" + Date.now() + Math.floor(Math.random() * 999);
+    const chosen = findFirstFit(
+      selectedTypeId,
+      id,
+      placements,
+      gridW,
+      gridH,
+      disabledCells,
+      typeById,
+    );
     if (!chosen) return; // grid is full: nowhere to put it
     setPlacements([...placements, chosen]);
     // If there's stock available, consume one. If the object is fully placed
@@ -365,18 +334,8 @@ export function App() {
     for (const tt of itemTypes) {
       let count = Math.max(0, newInv[tt.id] ?? 0);
       while (count > 0) {
-        let chosen: Placement | null = null;
-        outer: for (let y = 0; y < gridH; y++) {
-          for (let x = 0; x < gridW; x++) {
-            for (const rot of [0, 90, 180, 270]) {
-              const tryP = { id: "pa" + Date.now() + "_" + n++, type: tt.id, x, y, rot };
-              if (fits(tryP, placed, gridW, gridH, tryP.id, disabledCells, typeById)) {
-                chosen = tryP;
-                break outer;
-              }
-            }
-          }
-        }
+        const id = "pa" + Date.now() + "_" + n++;
+        const chosen = findFirstFit(tt.id, id, placed, gridW, gridH, disabledCells, typeById);
         if (!chosen) break; // no room left for this type
         placed.push(chosen);
         count -= 1;
@@ -387,88 +346,35 @@ export function App() {
     setInventory(newInv);
   }, [placements, inventory, itemTypes, gridW, gridH, disabledCells, typeById]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const onImport = () => fileInputRef.current?.click();
-  const onImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = parseImportedLayout(reader.result as string, itemTypes);
-        if (data.gridSize) setGridSize(data.gridSize);
-        if (data.placements) setPlacements(data.placements);
-        if (data.disabledCells) setDisabledCells(new Set(data.disabledCells));
-        if (data.itemTypes) setItemTypes(data.itemTypes);
-        if (data.inventory) setInventory(data.inventory);
-        setSelectedIds([]);
-        setSelectedTypeId(null);
-      } catch (err) {
-        console.error(`Import failed for "${file.name}":`, err);
-        alert(
-          err instanceof Error
-            ? `"${file.name}": ${err.message}`
-            : `Could not import "${file.name}".`,
-        );
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  };
-
-  const onExport = () => {
-    const data = {
-      gridSize,
-      placements,
-      disabledCells: Array.from(disabledCells),
-      itemTypes,
-      inventory,
-      score: scoreData.total,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "layout.json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
+  const { fileInputRef, onImport, onImportFile, onExport } = useLayoutIO(
+    { gridSize, placements, disabledCells, itemTypes, inventory, scoreTotal: scoreData.total },
+    patch => {
+      if (patch.gridSize) setGridSize(patch.gridSize);
+      if (patch.placements) setPlacements(patch.placements);
+      if (patch.disabledCells) setDisabledCells(new Set(patch.disabledCells));
+      if (patch.itemTypes) setItemTypes(patch.itemTypes);
+      if (patch.inventory) setInventory(patch.inventory);
+      setSelectedIds([]);
+      setSelectedTypeId(null);
+    },
+  );
 
   // Simulated annealing in the Rust/WASM engine, run in a Web Worker. Each
   // progress chunk applies the best layout found so far, so the board animates
   // toward the result; clicking again while running cancels (the last applied
   // layout stands).
-  const optimizeHandleRef = useRef<OptimizeHandle | null>(null);
-  const onOptimize = () => {
-    if (optimizing) {
-      optimizeHandleRef.current?.cancel();
-      optimizeHandleRef.current = null;
-      setOptimizing(false);
-      return;
-    }
-    if (placements.length === 0) return;
-    setOptimizing(true);
-    setSelectedIds([]);
-    setSelectedTypeId(null);
-    optimizeHandleRef.current = startOptimizer(
-      { itemTypes, gridW, gridH, disabledCells: Array.from(disabledCells), placements },
-      { seed: Date.now() >>> 0, totalIters: 200_000, chunkIters: 5_000, chunkDelayMs: 30 },
-      progress => {
-        setPlacements(progress.placements);
-        if (progress.done) {
-          optimizeHandleRef.current = null;
-          setOptimizing(false);
-        }
-      },
-      message => {
-        console.error(`Optimize failed: ${message}`);
-        optimizeHandleRef.current = null;
-        setOptimizing(false);
-      },
-    );
-  };
+  const { optimizing, onOptimize } = useOptimizer({
+    placements,
+    itemTypes,
+    gridW,
+    gridH,
+    disabledCells,
+    onStart: () => {
+      setSelectedIds([]);
+      setSelectedTypeId(null);
+    },
+    onProgress: p => setPlacements(p),
+  });
 
   const isWarm = t.theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
