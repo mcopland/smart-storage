@@ -50,6 +50,36 @@ export function occupancyMap(placements: Placement[], typesById: TypesById): Map
   return map;
 }
 
+// Build a set of "x,y" keys for every cell occupied by the given placements.
+// Cheaper than occupancyMap when we only need membership, not which id owns each cell.
+function occupiedKeys(placements: Placement[], typesById: TypesById): Set<string> {
+  const set = new Set<string>();
+  for (const p of placements) {
+    for (const [cx, cy] of cellsOf(p, typesById)) {
+      set.add(`${cx},${cy}`);
+    }
+  }
+  return set;
+}
+
+// Low-level check: do these absolute grid cells fit without hitting grid edges,
+// occupied cells, or disabled cells? The caller is responsible for building
+// `occupied` with any "self" placement already excluded.
+export function cellsFitIn(
+  cells: Cell[],
+  occupied: Set<string>,
+  gridW: number,
+  gridH: number,
+  disabledCells: Set<string> | null | undefined,
+): boolean {
+  for (const [cx, cy] of cells) {
+    if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return false;
+    if (occupied.has(`${cx},${cy}`)) return false;
+    if (disabledCells && disabledCells.has(`${cx},${cy}`)) return false;
+  }
+  return true;
+}
+
 export function fits(
   p: Placement,
   placements: Placement[],
@@ -60,25 +90,15 @@ export function fits(
   typesById: TypesById,
 ): boolean {
   const cells = cellsOf(p, typesById);
-  // Bounds check
-  for (const [cx, cy] of cells) {
-    if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return false;
-  }
-  // Occupancy + disabled check
-  const occ = occupancyMap(
-    placements.filter(q => q.id !== ignoreId),
+  const occupied = occupiedKeys(
+    ignoreId ? placements.filter(q => q.id !== ignoreId) : placements,
     typesById,
   );
-  for (const [cx, cy] of cells) {
-    if (occ.has(`${cx},${cy}`)) return false;
-    if (disabledCells && disabledCells.has(`${cx},${cy}`)) return false;
-  }
-  return true;
+  return cellsFitIn(cells, occupied, gridW, gridH, disabledCells);
 }
 
-// Scan row-major, trying all four rotations per cell, and return the first
-// Placement that fits. Delegates entirely to `fits` so disabled cells,
-// out-of-bounds checks, and occupancy are all handled consistently.
+// Scan row-major, trying all four rotations per cell. Builds occupancy once
+// and pre-rotates the type's cells rather than re-deriving them every iteration.
 export function findFirstFit(
   type: string,
   id: string,
@@ -88,11 +108,19 @@ export function findFirstFit(
   disabledCells: Set<string>,
   typesById: TypesById,
 ): Placement | null {
+  const t = typesById[type];
+  if (!t) return null;
+  // Exclude the target id itself in case it's already in `placed` (e.g. rotate-in-place).
+  const occupied = occupiedKeys(id ? placed.filter(q => q.id !== id) : placed, typesById);
+  const rots = ([0, 90, 180, 270] as const).map(rot => ({
+    rot,
+    cells: rotateCells(t.cells, rot),
+  }));
   for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < gridW; x++) {
-      for (const rot of [0, 90, 180, 270]) {
-        const tryP: Placement = { id, type, x, y, rot };
-        if (fits(tryP, placed, gridW, gridH, id, disabledCells, typesById)) return tryP;
+      for (const { rot, cells } of rots) {
+        const abs: Cell[] = cells.map(([dx, dy]) => [x + dx, y + dy]);
+        if (cellsFitIn(abs, occupied, gridW, gridH, disabledCells)) return { id, type, x, y, rot };
       }
     }
   }
