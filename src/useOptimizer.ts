@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createOptimizerClient, type OptimizerClient } from "./engine/optimizer";
 import type { ItemType, Placement } from "./model/types";
-import { boardSignature, formatBound, upperBoundLayouts } from "./model/searchSpace";
+import { boardSignature } from "./model/searchSpace";
 
 const CHUNK_ITERS = 5_000;
 const CHUNK_DELAY_MS = 30;
@@ -10,8 +10,6 @@ const ITER_BUDGET = 200_000;
 export interface OptimizerStats {
   // Total distinct layouts evaluated in this session.
   explored: number;
-  // Abbreviated upper bound on the total number of layouts (rough estimate).
-  coverageBound: string;
   // True when the last completed run found no new layouts.
   stalled: boolean;
   // Best score reported by the engine across all runs. Null until the first
@@ -121,15 +119,6 @@ export function useOptimizer({
     }
   }, [sig, placements, itemTypes, gridW, gridH, disabledCells, optimizing]);
 
-  // Rough upper bound on total layouts; shown as denominator in the UI.
-  const coverageBound = useMemo(
-    () =>
-      placements.length === 0
-        ? "0"
-        : formatBound(upperBoundLayouts(itemTypes, placements, gridW, gridH)),
-    [itemTypes, placements, gridW, gridH],
-  );
-
   const onOptimize = () => {
     const client = clientRef.current;
     if (!client) return;
@@ -146,5 +135,5 @@ export function useOptimizer({
     client.run(CHUNK_ITERS, CHUNK_DELAY_MS);
   };
 
-  return { optimizing, onOptimize, explored, coverageBound, stalled, bestScore };
+  return { optimizing, onOptimize, explored, stalled, bestScore };
 }

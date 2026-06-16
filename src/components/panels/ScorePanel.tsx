@@ -15,7 +15,6 @@ export interface ScorePanelProps {
   optimizing: boolean;
   // Layout exploration stats from useOptimizer.
   explored: number;
-  coverageBound: string;
   stalled: boolean;
   onImport: () => void;
   onExport: () => void;
@@ -49,7 +48,6 @@ export function ScorePanel({
   theme,
   optimizing,
   explored,
-  coverageBound,
   stalled,
   onImport,
   onExport,
@@ -243,9 +241,7 @@ export function ScorePanel({
               gap: 2,
             }}
           >
-            <span>
-              {explored.toLocaleString()} of {coverageBound} layouts tried
-            </span>
+            <span>{explored.toLocaleString()} layouts tried</span>
             {stalled && <span style={{ color: fgDim }}>no new layouts found</span>}
           </div>
         )}

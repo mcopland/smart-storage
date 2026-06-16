@@ -5,9 +5,10 @@
 //! The session is chunked (`step(n)`) so a Web Worker can post progress and
 //! honor cancellation between chunks instead of blocking in one long call.
 //!
-//! A `HashSet<u64>` visited registry records the canonical fingerprint of
-//! every layout evaluated. Moves that produce an already-seen fingerprint are
-//! rejected so the search never re-evaluates the same layout twice.
+//! A `HashSet<u64>` visited registry counts distinct layouts encountered.
+//! Revisiting an already-seen layout is intentionally allowed -- the walk
+//! must be free to pass through familiar states to reach unexplored regions
+//! (ergodicity). Revisits simply do not increment the counter.
 //! `restart_run` resets the per-run counters (temperature, stagnation) while
 //! keeping the cross-run visited set so successive presses of Optimize cover
 //! new ground. `reseat` updates the current position from a new Layout (e.g.
@@ -275,9 +276,10 @@ impl OptimizerSession {
                 self.since_improve = 0;
             } else {
                 self.since_improve += 1;
-                // Restart from the best layout when the walk stagnates.
+                // Restart from the best layout and kick into a fresh basin.
                 if self.since_improve >= stagnation_limit {
                     self.reset_to_best();
+                    self.kick(self.cur.len() as u32);
                     self.since_improve = 0;
                 }
             }
@@ -444,15 +446,12 @@ impl OptimizerSession {
             return false;
         }
 
-        // Fingerprint of the proposed layout; reject if already explored.
+        // Count the proposed layout if it has not been seen before.
+        // Revisiting a known layout is allowed; only Metropolis decides acceptance.
         self.cur[i] = new_pose;
         let fp = layout_fp(&self.cur, &self.item_type, &self.canonical_rot);
         self.cur[i] = old_pose;
-        if self.visited.contains(&fp) {
-            self.insert(i, &old_pose);
-            return false;
-        }
-        if self.visited.len() < MAX_VISITED {
+        if !self.visited.contains(&fp) && self.visited.len() < MAX_VISITED {
             self.visited.insert(fp);
             self.run_visited_count += 1;
         }
@@ -508,7 +507,8 @@ impl OptimizerSession {
         self.remove(a, &na);
         let after_a = self.edges_of(a, &na);
 
-        // Fingerprint of the proposed swap layout; reject if already explored.
+        // Count the proposed swap layout if it has not been seen before.
+        // Revisiting a known layout is allowed; only Metropolis decides acceptance.
         // Both a and b are temporarily out of occ here, so we only need to
         // update cur[] to reflect the proposed state for the hash.
         self.cur[a] = na;
@@ -516,12 +516,7 @@ impl OptimizerSession {
         let fp = layout_fp(&self.cur, &self.item_type, &self.canonical_rot);
         self.cur[a] = pa;
         self.cur[b] = pb;
-        if self.visited.contains(&fp) {
-            self.insert(b, &pb);
-            self.insert(a, &pa);
-            return false;
-        }
-        if self.visited.len() < MAX_VISITED {
+        if !self.visited.contains(&fp) && self.visited.len() < MAX_VISITED {
             self.visited.insert(fp);
             self.run_visited_count += 1;
         }
@@ -560,6 +555,15 @@ impl OptimizerSession {
         for i in 0..self.cur.len() {
             let pose = self.cur[i];
             self.insert(i, &pose);
+        }
+    }
+
+    /// Apply `n` unconditional random relocations to escape the current basin.
+    /// `best` is unchanged; `cur` wanders freely so the next annealing leg
+    /// starts from a fresh region of the search space.
+    fn kick(&mut self, n: u32) {
+        for _ in 0..n {
+            self.try_random_move(f64::INFINITY);
         }
     }
 
@@ -764,5 +768,120 @@ mod tests {
             progress.stalled,
             "must stall when the only layout was already recorded at construction"
         );
+    }
+
+    #[test]
+    fn revisit_not_rejected() {
+        // Mechanistic: a move that lands on an already-visited layout must NOT be
+        // rejected by the visited-set check. Only the Metropolis criterion should
+        // decide acceptance.
+        //
+        // Setup: 1x2 grid, one single-cell item. Only two valid layouts: (0,0) and
+        // (0,1). We manually insert the (0,1) fingerprint into visited so it looks
+        // "already explored", then call try_single toward (0,1) at infinite
+        // temperature (guaranteed Metropolis accept). Old code rejected the move
+        // here and returned false; new code must accept it.
+        let layout = Layout {
+            item_types: vec![ItemType {
+                id: "d".to_string(),
+                tags: vec![],
+                synergies: vec![],
+                cells: vec![(0, 0)],
+            }],
+            grid_w: 1,
+            grid_h: 2,
+            disabled_cells: vec![],
+            placements: vec![Placement {
+                id: "p0".to_string(),
+                type_id: "d".to_string(),
+                x: 0,
+                y: 0,
+                rot: 0,
+            }],
+        };
+        let mut session = OptimizerSession::new(&layout, 0, 200).expect("session");
+        // Pre-populate visited with the target layout's fingerprint.
+        let fp_target = layout_fp(
+            &[Pose { x: 0, y: 1, rot: 0 }],
+            &session.item_type,
+            &session.canonical_rot,
+        );
+        session.visited.insert(fp_target);
+
+        // At infinite temperature, acceptance is certain if the move is not rejected
+        // by the visited-set check.
+        let moved = session.try_single(0, Pose { x: 0, y: 1, rot: 0 }, f64::INFINITY);
+        assert!(moved, "move to already-visited layout must not be rejected");
+        assert_eq!(
+            session.cur[0],
+            Pose { x: 0, y: 1, rot: 0 },
+            "cur must reflect the accepted move"
+        );
+    }
+
+    #[test]
+    fn does_not_falsely_stall_on_large_space() {
+        // 6x6 grid with 8 single-cell items has C(36,8) ~30M distinct layouts --
+        // far more than the 50k-iteration budget can exhaust. Stalling here means
+        // the walk trapped itself in a small visited region, not genuine exhaustion.
+        let layout = dot_layout(6, 6, 8);
+        let mut session = OptimizerSession::new(&layout, 42, 50_000).expect("session");
+        let progress = loop {
+            let p = session.step(5_000);
+            if p.done {
+                break p;
+            }
+        };
+        assert!(
+            !progress.stalled,
+            "must not stall on a large space that 50k iterations cannot exhaust"
+        );
+    }
+
+    #[test]
+    fn explored_keeps_growing_across_runs() {
+        // After a second Optimize press the visited set must be larger than after
+        // the first -- the walk should keep discovering new layouts, not re-trap
+        // in the same already-visited basin.
+        let layout = dot_layout(6, 6, 8);
+        let mut session = OptimizerSession::new(&layout, 7, 50_000).expect("session");
+        loop {
+            let p = session.step(5_000);
+            if p.done {
+                break;
+            }
+        }
+        let explored_after_run1 = session.visited.len();
+
+        session.restart_run();
+        loop {
+            let p = session.step(5_000);
+            if p.done {
+                break;
+            }
+        }
+        let explored_after_run2 = session.visited.len();
+
+        assert!(
+            explored_after_run2 > explored_after_run1,
+            "explored must grow across runs: {} -> {}",
+            explored_after_run1,
+            explored_after_run2
+        );
+    }
+
+    #[test]
+    fn kick_moves_current_away_from_best() {
+        // After a kick, cur should be in a different position from best on a
+        // board with room to move (3x3, 3 items = 6 empty cells).
+        let layout = dot_layout(4, 4, 3);
+        let mut session = OptimizerSession::new(&layout, 13, 5_000).expect("session");
+        session.step(100);
+        let fp_best = layout_fp(&session.best, &session.item_type, &session.canonical_rot);
+        // Reset to best then kick so we start from a known position before perturbing.
+        session.reset_to_best();
+        session.kick(session.cur.len() as u32 * 4);
+        let fp_cur = layout_fp(&session.cur, &session.item_type, &session.canonical_rot);
+        assert_ne!(fp_cur, fp_best, "kick must move cur away from best");
     }
 }

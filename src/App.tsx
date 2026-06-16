@@ -355,7 +355,7 @@ export function App() {
   // progress chunk applies the best layout found so far, so the board animates
   // toward the result; clicking again while running cancels (the last applied
   // layout stands).
-  const { optimizing, onOptimize, explored, coverageBound, stalled } = useOptimizer({
+  const { optimizing, onOptimize, explored, stalled } = useOptimizer({
     placements,
     itemTypes,
     gridW,
@@ -594,7 +594,6 @@ export function App() {
             iconStyle={t.iconStyle}
             optimizing={optimizing}
             explored={explored}
-            coverageBound={coverageBound}
             stalled={stalled}
             onImport={onImport}
             onExport={onExport}
