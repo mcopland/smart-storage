@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fits, getDims, getShapeCells } from "../../model/geometry";
+import { newPlacementId } from "../../model/ids";
 import type { CatalogById, Inventory, Placement, ScoreResult } from "../../model/types";
 import { Glyph } from "../Glyph";
 import { PlacedItem } from "./PlacedItem";
@@ -64,7 +65,6 @@ export interface GridSurfaceProps {
   disabledCells: Set<string>;
   toggleDisabledCell?: (x: number, y: number) => void;
   highlightedTypeId: string | null;
-  onHoverTypeId?: (id: string | null) => void;
   hoveredId: string | null;
   onHoverPlacement?: (id: string | null) => void;
   highlightStyle: string;
@@ -276,7 +276,7 @@ export function GridSurface({
     if (draggingFromTray && ghost) {
       if (ghost.valid) {
         const newPlacement = {
-          id: "p" + Date.now() + Math.floor(Math.random() * 999),
+          id: newPlacementId(),
           type: ghost.type,
           x: ghost.x,
           y: ghost.y,

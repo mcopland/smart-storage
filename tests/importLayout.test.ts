@@ -104,4 +104,98 @@ describe("parseImportedLayout", () => {
       /disabledCells\[1\]/,
     );
   });
+
+  // --- integer / bounds validation ---
+
+  it("rejects fractional x in a placement", () => {
+    const bad = { placements: [{ id: "p1", type: "core", x: 1.5, y: 0, rot: 0 }] };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*"x"/,
+    );
+  });
+
+  it("rejects fractional y in a placement", () => {
+    const bad = { placements: [{ id: "p1", type: "core", x: 0, y: 0.9, rot: 0 }] };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*"y"/,
+    );
+  });
+
+  it("rejects fractional rot in a placement", () => {
+    const bad = { placements: [{ id: "p1", type: "core", x: 0, y: 0, rot: 45.5 }] };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*"rot"/,
+    );
+  });
+
+  it("rejects fractional w in gridSize", () => {
+    const bad = { ...validLayout, gridSize: { w: 8.5, h: 6 } };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /"gridSize".*"w"/,
+    );
+  });
+
+  it("rejects fractional h in gridSize", () => {
+    const bad = { ...validLayout, gridSize: { w: 8, h: 6.1 } };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /"gridSize".*"h"/,
+    );
+  });
+
+  it("rejects fractional coordinates in itemType cells", () => {
+    const bad = {
+      itemTypes: [
+        {
+          id: "frac",
+          name: "Frac",
+          glyph: "square",
+          color: "#888",
+          tags: [],
+          synergies: [],
+          cells: [[0.5, 0]],
+        },
+      ],
+      placements: [],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /itemTypes\[0\]/,
+    );
+  });
+
+  it("rejects non-integer inventory count", () => {
+    const bad = { ...validLayout, inventory: { core: 2.5 } };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /inventory.*"core"/,
+    );
+  });
+
+  it("rejects placement x out of bounds when gridSize is known", () => {
+    const bad = {
+      gridSize: { w: 4, h: 4 },
+      placements: [{ id: "p1", type: "core", x: 5, y: 0, rot: 0 }],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
+    );
+  });
+
+  it("rejects placement y out of bounds when gridSize is known", () => {
+    const bad = {
+      gridSize: { w: 4, h: 4 },
+      placements: [{ id: "p1", type: "core", x: 0, y: 10, rot: 0 }],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
+    );
+  });
+
+  it("rejects negative placement coordinates", () => {
+    const bad = {
+      gridSize: { w: 4, h: 4 },
+      placements: [{ id: "p1", type: "core", x: -1, y: 0, rot: 0 }],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
+    );
+  });
 });

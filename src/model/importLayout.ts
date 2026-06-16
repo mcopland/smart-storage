@@ -20,6 +20,14 @@ function requireNumber(obj: Record<string, unknown>, field: string, where: strin
   return v;
 }
 
+function requireInt(obj: Record<string, unknown>, field: string, where: string): number {
+  const v = requireNumber(obj, field, where);
+  if (!Number.isInteger(v)) {
+    throw new Error(`import failed: ${where} "${field}" must be an integer (got ${v})`);
+  }
+  return v;
+}
+
 function requireString(obj: Record<string, unknown>, field: string, where: string): string {
   const v = obj[field];
   if (typeof v !== "string" || v.length === 0) {
@@ -38,8 +46,10 @@ function parseCells(v: unknown, where: string): Cell[] {
       || c.length !== 2
       || typeof c[0] !== "number"
       || typeof c[1] !== "number"
+      || !Number.isInteger(c[0])
+      || !Number.isInteger(c[1])
     ) {
-      throw new Error(`import failed: ${where} cells[${i}] must be an [x, y] number pair`);
+      throw new Error(`import failed: ${where} cells[${i}] must be an [x, y] integer pair`);
     }
     return [c[0], c[1]];
   });
@@ -96,9 +106,9 @@ function parsePlacement(v: unknown, where: string): Placement {
   return {
     id: requireString(v, "id", where),
     type: requireString(v, "type", where),
-    x: requireNumber(v, "x", where),
-    y: requireNumber(v, "y", where),
-    rot: requireNumber(v, "rot", where),
+    x: requireInt(v, "x", where),
+    y: requireInt(v, "y", where),
+    rot: requireInt(v, "rot", where),
   };
 }
 
@@ -121,8 +131,8 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
   if (raw.gridSize !== undefined) {
     if (!isRecord(raw.gridSize)) throw new Error('import failed: "gridSize" must be an object');
     out.gridSize = {
-      w: requireNumber(raw.gridSize, "w", '"gridSize"'),
-      h: requireNumber(raw.gridSize, "h", '"gridSize"'),
+      w: requireInt(raw.gridSize, "w", '"gridSize"'),
+      h: requireInt(raw.gridSize, "h", '"gridSize"'),
     };
   }
 
@@ -137,11 +147,20 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
       throw new Error('import failed: "placements" must be an array');
     out.placements = raw.placements.map((p, i) => parsePlacement(p, `placements[${i}]`));
     const known = new Set((out.itemTypes ?? currentTypes).map(t => t.id));
-    for (const p of out.placements) {
+    for (let i = 0; i < out.placements.length; i++) {
+      const p = out.placements[i];
       if (!known.has(p.type)) {
         throw new Error(
           `import failed: placement "${p.id}" references unknown item type "${p.type}"`,
         );
+      }
+      if (out.gridSize) {
+        const { w, h } = out.gridSize;
+        if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) {
+          throw new Error(
+            `import failed: placements[${i}] "${p.id}" origin (${p.x},${p.y}) is out of bounds for grid ${w}x${h}`,
+          );
+        }
       }
     }
   }
@@ -162,8 +181,8 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
     if (!isRecord(raw.inventory)) throw new Error('import failed: "inventory" must be an object');
     const inventory: Inventory = {};
     for (const [k, v] of Object.entries(raw.inventory)) {
-      if (typeof v !== "number") {
-        throw new Error(`import failed: inventory count for "${k}" must be a number`);
+      if (typeof v !== "number" || !Number.isFinite(v) || !Number.isInteger(v)) {
+        throw new Error(`import failed: inventory count for "${k}" must be an integer`);
       }
       inventory[k] = v;
     }
