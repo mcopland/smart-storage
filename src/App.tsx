@@ -16,6 +16,7 @@ import { engineScore } from "./engine/wasm";
 import { INITIAL_INVENTORY, INITIAL_PLACEMENTS, ITEM_TYPES } from "./model/catalog";
 import { cellsOf, findFirstFit, fits, resizeFit } from "./model/geometry";
 import type { Cell, GridSize, ItemType, Placement } from "./model/types";
+import { newPlacementId } from "./model/ids";
 import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
 import { useBoard } from "./useBoard";
 import { useGridSizing } from "./useGridSizing";
@@ -130,10 +131,15 @@ export function App() {
 
   // Scoring lives in the Rust/WASM engine (single source of truth); calls are
   // synchronous and cheap, so the live score recomputes on every change.
-  const scoreData = useMemo(
-    () => engineScore({ itemTypes, gridW, gridH, placements }),
-    [itemTypes, gridW, gridH, placements],
-  );
+  // The try/catch prevents an engine error from crashing the whole app through
+  // the ErrorBoundary -- the score panel gracefully shows null instead.
+  const scoreData = useMemo(() => {
+    try {
+      return engineScore({ itemTypes, gridW, gridH, placements });
+    } catch {
+      return null;
+    }
+  }, [itemTypes, gridW, gridH, placements]);
 
   useEffect(() => {
     document.body.className = `theme-${t.theme}`;
@@ -291,7 +297,7 @@ export function App() {
   // first free spot it fits (any rotation). Mirrors the per-type half of Place all.
   const onAddItem = useCallback(() => {
     if (!selectedTypeId) return;
-    const id = "ai" + Date.now() + Math.floor(Math.random() * 999);
+    const id = newPlacementId();
     const chosen = findFirstFit(
       selectedTypeId,
       id,
@@ -312,11 +318,10 @@ export function App() {
     setSelectedTypeId(null);
     const placed = [...placements];
     const newInv = { ...inventory };
-    let n = 0;
     for (const tt of itemTypes) {
       let count = Math.max(0, newInv[tt.id] ?? 0);
       while (count > 0) {
-        const id = "pa" + Date.now() + "_" + n++;
+        const id = newPlacementId();
         const chosen = findFirstFit(tt.id, id, placed, gridW, gridH, disabledCells, typeById);
         if (!chosen) break; // no room left for this type
         placed.push(chosen);
@@ -328,7 +333,14 @@ export function App() {
   }, [placements, inventory, itemTypes, gridW, gridH, disabledCells, typeById, board]);
 
   const { fileInputRef, onImport, onImportFile, onExport } = useLayoutIO(
-    { gridSize, placements, disabledCells, itemTypes, inventory, scoreTotal: scoreData.total },
+    {
+      gridSize,
+      placements,
+      disabledCells,
+      itemTypes,
+      inventory,
+      scoreTotal: scoreData?.total ?? 0,
+    },
     patch => {
       if (patch.gridSize) setGridSize(patch.gridSize);
       if (patch.disabledCells) setDisabledCells(new Set(patch.disabledCells));
@@ -531,7 +543,6 @@ export function App() {
                 disabledCells={disabledCells}
                 toggleDisabledCell={toggleDisabledCell}
                 highlightedTypeId={highlightedTypeId}
-                onHoverTypeId={setHighlightedTypeId}
                 hoveredId={hoveredId}
                 onHoverPlacement={setHoveredId}
                 typesById={typeById}
