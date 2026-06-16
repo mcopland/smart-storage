@@ -15,8 +15,9 @@ import { ZoomSlider } from "./components/panels/ZoomSlider";
 import { engineScore } from "./engine/wasm";
 import { INITIAL_INVENTORY, INITIAL_PLACEMENTS, ITEM_TYPES } from "./model/catalog";
 import { cellsOf, findFirstFit, fits, resizeFit } from "./model/geometry";
-import type { Cell, GridSize, Inventory, ItemType, Placement } from "./model/types";
+import type { Cell, GridSize, ItemType, Placement } from "./model/types";
 import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
+import { useBoard } from "./useBoard";
 import { useGridSizing } from "./useGridSizing";
 import { useLayoutIO } from "./useLayoutIO";
 import { useOptimizer } from "./useOptimizer";
@@ -32,8 +33,10 @@ export function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
   const [gridSize, setGridSize] = useState<GridSize>({ w: 10, h: 10 });
-  const [placements, setPlacements] = useState<Placement[]>(INITIAL_PLACEMENTS);
-  const [inventory, setInventory] = useState<Inventory>(INITIAL_INVENTORY);
+  const [{ placements, inventory }, board] = useBoard({
+    placements: INITIAL_PLACEMENTS,
+    inventory: INITIAL_INVENTORY,
+  });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [highlightedTypeId, setHighlightedTypeId] = useState<string | null>(null);
@@ -59,17 +62,23 @@ export function App() {
     setItemTypes(prev => prev.map(tt => (tt.id === id ? { ...tt, ...patch } : tt)));
   }, []);
 
-  const onCreateType = useCallback((newType: ItemType, count: number) => {
-    setItemTypes(prev => [...prev, newType]);
-    setInventory(prev => ({ ...prev, [newType.id]: (prev[newType.id] ?? 0) + count }));
-  }, []);
+  const onCreateType = useCallback(
+    (newType: ItemType, count: number) => {
+      setItemTypes(prev => [...prev, newType]);
+      board.addStock(newType.id, count);
+    },
+    [board],
+  );
 
   // Set the available stock (inventory count) for a type; lets the user restock
   // an object that's fully placed so they can create more instances of it.
-  const onSetStock = useCallback((typeId: string, n: number) => {
-    if (!typeId) return;
-    setInventory(prev => ({ ...prev, [typeId]: Math.max(0, Math.min(999, Math.round(n))) }));
-  }, []);
+  const onSetStock = useCallback(
+    (typeId: string, n: number) => {
+      if (!typeId) return;
+      board.setStock(typeId, n);
+    },
+    [board],
+  );
 
   const onSaveShape = useCallback(
     (id: string, newCells: Cell[]) => {
@@ -106,28 +115,14 @@ export function App() {
     if (!shapeConflict) return;
     const { typeId, newCells, conflicts } = shapeConflict;
 
-    // Remove conflicting placements
-    const conflictIds = new Set(conflicts.map(p => p.id));
-    setPlacements(prev => prev.filter(p => !conflictIds.has(p.id)));
-
-    // Return items to inventory
-    const returned: Record<string, number> = {};
-    for (const p of conflicts) {
-      returned[p.type] = (returned[p.type] || 0) + 1;
-    }
-    setInventory(prev => {
-      const next = { ...prev };
-      for (const [type, count] of Object.entries(returned)) {
-        next[type] = (next[type] || 0) + count;
-      }
-      return next;
-    });
+    // Remove conflicting placements and return them to inventory.
+    board.removePlacements(conflicts.map(p => p.id));
 
     // Apply shape change
     setItemTypes(prev => prev.map(tt => (tt.id === typeId ? { ...tt, cells: newCells } : tt)));
 
     setShapeConflict(null);
-  }, [shapeConflict]);
+  }, [shapeConflict, board]);
 
   // Compute cell size: at zoom=100% the grid fits the container.
   const zoom = t.zoom ?? 100;
@@ -200,11 +195,11 @@ export function App() {
       const w = Math.max(2, Math.min(20, newW));
       const res = resizeFit(placements, disabledCells, w, gridH, typeById);
       if (!res) return;
-      setPlacements(res.placements);
+      board.setPlacements(res.placements);
       setDisabledCells(res.disabled);
       setGridSize(prev => ({ ...prev, w }));
     },
-    [placements, disabledCells, gridH, typeById],
+    [placements, disabledCells, gridH, typeById, board],
   );
 
   const onSafeResizeH = useCallback(
@@ -212,11 +207,11 @@ export function App() {
       const h = Math.max(2, Math.min(20, newH));
       const res = resizeFit(placements, disabledCells, gridW, h, typeById);
       if (!res) return;
-      setPlacements(res.placements);
+      board.setPlacements(res.placements);
       setDisabledCells(res.disabled);
       setGridSize(prev => ({ ...prev, h }));
     },
-    [placements, disabledCells, gridW, typeById],
+    [placements, disabledCells, gridW, typeById, board],
   );
 
   const toggleDisabledCell = (cx: number, cy: number) => {
@@ -235,40 +230,31 @@ export function App() {
 
   const rotateSelection = useCallback(() => {
     if (selectedIds.length === 0) return;
-    setPlacements(prev =>
-      prev.map(p => {
+    board.setPlacements(
+      placements.map(p => {
         if (!selectedIds.includes(p.id)) return p;
         const newRot = (p.rot + 90) % 360;
         const candidate = { ...p, rot: newRot };
-        if (fits(candidate, prev, gridW, gridH, p.id, disabledCells, typeById)) return candidate;
+        if (fits(candidate, placements, gridW, gridH, p.id, disabledCells, typeById))
+          return candidate;
         return p;
       }),
     );
-  }, [selectedIds, gridW, gridH, disabledCells, typeById]);
+  }, [selectedIds, placements, gridW, gridH, disabledCells, typeById, board]);
 
   const deleteSelection = useCallback(() => {
     if (selectedIds.length === 0) return;
-    const removed = placements.filter(p => selectedIds.includes(p.id));
-    setPlacements(placements.filter(p => !selectedIds.includes(p.id)));
-    const newInv = { ...inventory };
-    for (const p of removed) newInv[p.type] = (newInv[p.type] || 0) + 1;
-    setInventory(newInv);
+    board.removePlacements(selectedIds);
     setSelectedIds([]);
-  }, [selectedIds, placements, inventory]);
+  }, [selectedIds, board]);
 
   const confirmDeleteType = useCallback(() => {
     if (!deleteTypeTarget) return;
-    const typeId = deleteTypeTarget;
-    setPlacements(prev => prev.filter(p => p.type !== typeId));
-    setInventory(prev => {
-      const next = { ...prev };
-      delete next[typeId];
-      return next;
-    });
-    setItemTypes(prev => prev.filter(tt => tt.id !== typeId));
+    board.removeType(deleteTypeTarget);
+    setItemTypes(prev => prev.filter(tt => tt.id !== deleteTypeTarget));
     setSelectedTypeId(null);
     setDeleteTypeTarget(null);
-  }, [deleteTypeTarget]);
+  }, [deleteTypeTarget, board]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -316,13 +302,9 @@ export function App() {
       typeById,
     );
     if (!chosen) return; // grid is full: nowhere to put it
-    setPlacements([...placements, chosen]);
-    // If there's stock available, consume one. If the object is fully placed
-    // (stock 0), Add still works: it mints a new instance, so the total count
-    // of this object grows and stock stays at 0 (created + immediately placed).
-    const cur = inventory[selectedTypeId] ?? 0;
-    if (cur > 0) setInventory({ ...inventory, [selectedTypeId]: cur - 1 });
-  }, [selectedTypeId, inventory, placements, gridW, gridH, disabledCells, typeById]);
+    // addPlacement consumes one stock if available, otherwise mints (stock stays 0).
+    board.addPlacement(chosen);
+  }, [selectedTypeId, placements, gridW, gridH, disabledCells, typeById, board]);
 
   // Place every remaining inventory item onto the first free spot it fits.
   const onPlaceAll = useCallback(() => {
@@ -342,18 +324,16 @@ export function App() {
       }
       newInv[tt.id] = count;
     }
-    setPlacements(placed);
-    setInventory(newInv);
-  }, [placements, inventory, itemTypes, gridW, gridH, disabledCells, typeById]);
+    board.placeAll(placed, newInv);
+  }, [placements, inventory, itemTypes, gridW, gridH, disabledCells, typeById, board]);
 
   const { fileInputRef, onImport, onImportFile, onExport } = useLayoutIO(
     { gridSize, placements, disabledCells, itemTypes, inventory, scoreTotal: scoreData.total },
     patch => {
       if (patch.gridSize) setGridSize(patch.gridSize);
-      if (patch.placements) setPlacements(patch.placements);
       if (patch.disabledCells) setDisabledCells(new Set(patch.disabledCells));
       if (patch.itemTypes) setItemTypes(patch.itemTypes);
-      if (patch.inventory) setInventory(patch.inventory);
+      board.applyBoard({ placements: patch.placements, inventory: patch.inventory });
       setSelectedIds([]);
       setSelectedTypeId(null);
     },
@@ -373,7 +353,7 @@ export function App() {
       setSelectedIds([]);
       setSelectedTypeId(null);
     },
-    onProgress: p => setPlacements(p),
+    onProgress: p => board.setPlacements(p),
   });
 
   const isWarm = t.theme === "warm";
@@ -532,9 +512,9 @@ export function App() {
             >
               <GridSurface
                 placements={placements}
-                setPlacements={setPlacements}
+                setPlacements={board.setPlacements}
                 inventory={inventory}
-                setInventory={setInventory}
+                setInventory={board.setInventory}
                 selectedIds={selectedIds}
                 setSelectedIds={onSelectPlacements}
                 gridW={gridW}

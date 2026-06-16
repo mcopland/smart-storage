@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   allPlacementsFit,
+  cellsFitIn,
   findFirstFit,
   fits,
   getDims,
@@ -100,6 +101,41 @@ describe("allPlacementsFit / resizeFit", () => {
 
   it("resizeFit returns null when the occupied span cannot fit", () => {
     expect(resizeFit([p("a", 0, 0), p("b", 4, 0)], new Set<string>(), 4, 4, typesById)).toBeNull();
+  });
+});
+
+describe("cellsFitIn", () => {
+  it("passes when cells are in-bounds and unoccupied", () => {
+    expect(
+      cellsFitIn(
+        [
+          [0, 0],
+          [1, 0],
+        ],
+        new Set(),
+        4,
+        4,
+        null,
+      ),
+    ).toBe(true);
+  });
+
+  it("fails when a cell is out of bounds", () => {
+    expect(cellsFitIn([[4, 0]], new Set(), 4, 4, null)).toBe(false);
+    expect(cellsFitIn([[0, 4]], new Set(), 4, 4, null)).toBe(false);
+    expect(cellsFitIn([[-1, 0]], new Set(), 4, 4, null)).toBe(false);
+  });
+
+  it("fails when a cell is in the occupied set", () => {
+    const occupied = new Set(["2,1"]);
+    expect(cellsFitIn([[2, 1]], occupied, 4, 4, null)).toBe(false);
+    expect(cellsFitIn([[2, 0]], occupied, 4, 4, null)).toBe(true);
+  });
+
+  it("fails when a cell is disabled", () => {
+    const disabled = new Set(["1,1"]);
+    expect(cellsFitIn([[1, 1]], new Set(), 4, 4, disabled)).toBe(false);
+    expect(cellsFitIn([[0, 0]], new Set(), 4, 4, disabled)).toBe(true);
   });
 });
 
