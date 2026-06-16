@@ -13,6 +13,10 @@ export interface ScorePanelProps {
   selectedTypeId: string | null;
   theme: string;
   optimizing: boolean;
+  // Layout exploration stats from useOptimizer.
+  explored: number;
+  coverageBound: string;
+  stalled: boolean;
   onImport: () => void;
   onExport: () => void;
   onOptimize: () => void;
@@ -44,6 +48,9 @@ export function ScorePanel({
   selectedTypeId,
   theme,
   optimizing,
+  explored,
+  coverageBound,
+  stalled,
   onImport,
   onExport,
   onOptimize,
@@ -220,25 +227,47 @@ export function ScorePanel({
       <div
         style={{
           flexShrink: 0,
-          padding: 14,
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
-          gap: 8,
           borderTop: `1px solid ${border}`,
           background: surfaceSubtle,
           backdropFilter: "blur(8px)",
         }}
       >
-        <button onClick={onImport} style={btnStyle(theme, "ghost")}>
-          Import
-        </button>
-        <button onClick={onExport} style={btnStyle(theme, "ghost")}>
-          Export
-        </button>
-        {/* While solving, the same button cancels the run. */}
-        <button onClick={onOptimize} style={btnStyle(theme, "primary")}>
-          {optimizing ? "Cancel" : "Optimize"}
-        </button>
+        {explored > 0 && (
+          <div
+            style={{
+              padding: "8px 14px 0",
+              font: '11px/1.4 "JetBrains Mono", monospace',
+              color: fgFaint,
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}
+          >
+            <span>
+              {explored.toLocaleString()} of {coverageBound} layouts tried
+            </span>
+            {stalled && <span style={{ color: fgDim }}>no new layouts found</span>}
+          </div>
+        )}
+        <div
+          style={{
+            padding: 14,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 8,
+          }}
+        >
+          <button onClick={onImport} style={btnStyle(theme, "ghost")}>
+            Import
+          </button>
+          <button onClick={onExport} style={btnStyle(theme, "ghost")}>
+            Export
+          </button>
+          {/* While solving, the same button cancels the run. */}
+          <button onClick={onOptimize} style={btnStyle(theme, "primary")}>
+            {optimizing ? "Cancel" : "Optimize"}
+          </button>
+        </div>
       </div>
     </div>
   );

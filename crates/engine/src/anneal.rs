@@ -4,16 +4,31 @@
 //!
 //! The session is chunked (`step(n)`) so a Web Worker can post progress and
 //! honor cancellation between chunks instead of blocking in one long call.
+//!
+//! A `HashSet<u64>` visited registry records the canonical fingerprint of
+//! every layout evaluated. Moves that produce an already-seen fingerprint are
+//! rejected so the search never re-evaluates the same layout twice.
+//! `restart_run` resets the per-run counters (temperature, stagnation) while
+//! keeping the cross-run visited set so successive presses of Optimize cover
+//! new ground. `reseat` updates the current position from a new Layout (e.g.
+//! after a manual move) while also preserving the visited set.
+
+use std::collections::HashSet;
 
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 
-use crate::model::{rotate_cells, Cell, Layout, Placement};
+use crate::model::{Cell, Layout, Placement, rotate_cells};
 use crate::score::{calc_score, tag_synergy};
 
 const T_START: f64 = 3.0;
 const T_END: f64 = 0.05;
+
+/// Cap on visited-set size to bound memory (~8 MB at u64 with typical load
+/// factor). Once reached, the set is no longer updated but still consulted so
+/// already-seen layouts continue to be rejected.
+const MAX_VISITED: usize = 1_000_000;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +38,11 @@ pub struct Progress {
     pub score: i32,
     pub done: bool,
     pub iters_done: u32,
+    /// Distinct layouts evaluated across all runs in this session.
+    pub explored: u32,
+    /// True when the most recently completed run found zero new layouts,
+    /// meaning the reachable search space is likely exhausted.
+    pub stalled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +62,10 @@ pub struct OptimizerSession {
     type_ids: Vec<String>,
     /// Shape cells per type per rotation step, normalized to origin.
     rotations: Vec<[Vec<Cell>; 4]>,
+    /// For each (type, rot), the lowest rotation index that produces the same
+    /// normalized cell shape. Used in `layout_fp` so that rotationally-
+    /// equivalent poses hash identically (e.g. all 4 rotations of a 1x1 item).
+    canonical_rot: Vec<[u8; 4]>,
     /// Symmetric pair score: tag_synergy(a, b) + tag_synergy(b, a).
     syn2: Vec<Vec<i32>>,
     /// Cell -> placement index, plus a parallel disabled mask.
@@ -52,9 +76,49 @@ pub struct OptimizerSession {
     best: Vec<Pose>,
     best_score: i32,
     rng: SmallRng,
+    /// Per-run iteration counter; reset by `restart_run` and `reseat`.
     iter: u32,
     total_iters: u32,
     since_improve: u32,
+    /// Layouts evaluated across all runs in this session.
+    visited: HashSet<u64>,
+    /// New layouts found in the current run; used to detect stalls.
+    run_visited_count: u32,
+}
+
+/// Canonical layout fingerprint: FNV-1a hash of the sorted list of
+/// (type_index, canonical_rot, x, y) tuples. Two properties:
+/// - Sorting makes same-type position swaps produce the same fingerprint.
+/// - `canonical_rot[ti][rot]` is the lowest rotation index that produces the
+///   same normalized cell shape, so rotationally-equivalent poses are treated
+///   as the same physical layout (e.g. all 4 rotations of a single-cell item).
+fn layout_fp(poses: &[Pose], item_type: &[usize], canonical_rot: &[[u8; 4]]) -> u64 {
+    let mut entries: Vec<(u32, i32, i32, u8)> = poses
+        .iter()
+        .zip(item_type)
+        .map(|(p, &ti)| {
+            let canon = canonical_rot[ti][p.rot as usize];
+            (ti as u32, p.x, p.y, canon)
+        })
+        .collect();
+    entries.sort_unstable();
+
+    const OFFSET: u64 = 14695981039346656037;
+    const PRIME: u64 = 1099511628211;
+    let mut h = OFFSET;
+    for (ti, x, y, rot) in entries {
+        for &b in ti
+            .to_le_bytes()
+            .iter()
+            .chain(x.to_le_bytes().iter())
+            .chain(y.to_le_bytes().iter())
+            .chain(std::slice::from_ref(&rot))
+        {
+            h ^= b as u64;
+            h = h.wrapping_mul(PRIME);
+        }
+    }
+    h
 }
 
 impl OptimizerSession {
@@ -83,6 +147,21 @@ impl OptimizerSession {
                     rotate_cells(&t.cells, 180),
                     rotate_cells(&t.cells, 270),
                 ]
+            })
+            .collect();
+
+        // For each type, map each rotation to the lowest rotation that produces
+        // the same normalized shape (so symmetric items deduplicate correctly).
+        let canonical_rot: Vec<[u8; 4]> = rotations
+            .iter()
+            .map(|shapes| {
+                let mut canon = [0u8; 4];
+                for r in 0..4u8 {
+                    canon[r as usize] = (0..r)
+                        .find(|&c| shapes[c as usize] == shapes[r as usize])
+                        .unwrap_or(r);
+                }
+                canon
             })
             .collect();
 
@@ -143,6 +222,7 @@ impl OptimizerSession {
             item_type,
             type_ids,
             rotations,
+            canonical_rot,
             syn2,
             occ: vec![None; size],
             disabled,
@@ -154,6 +234,8 @@ impl OptimizerSession {
             iter: 0,
             total_iters,
             since_improve: 0,
+            visited: HashSet::new(),
+            run_visited_count: 0,
         };
         session.best_score = session.cur_score;
 
@@ -167,6 +249,11 @@ impl OptimizerSession {
             }
             session.insert(i, &pose);
         }
+
+        // Record the initial layout as the first explored state.
+        let fp = layout_fp(&session.cur, &session.item_type, &session.canonical_rot);
+        session.visited.insert(fp);
+
         Ok(session)
     }
 
@@ -195,12 +282,81 @@ impl OptimizerSession {
                 }
             }
         }
+        let done = self.iter >= self.total_iters;
         Progress {
             placements: self.poses_to_placements(&self.best),
             score: self.best_score,
-            done: self.iter >= self.total_iters,
+            done,
             iters_done: self.iter,
+            explored: self.visited.len().min(u32::MAX as usize) as u32,
+            stalled: done && self.run_visited_count == 0,
         }
+    }
+
+    /// Reset per-run counters so the next `step` loop re-anneals T_START->T_END
+    /// while the visited set (and the best layout) carry over from prior runs.
+    pub fn restart_run(&mut self) {
+        self.iter = 0;
+        self.run_visited_count = 0;
+        self.since_improve = 0;
+        // Start each run from the best known state for maximum exploration value.
+        self.reset_to_best();
+    }
+
+    /// Update the current layout from an external source (e.g. a manual move in
+    /// the UI), keeping the visited set intact. The new layout must have the same
+    /// set of placement ids; returns an error otherwise.
+    pub fn reseat(&mut self, layout: &Layout) -> Result<(), String> {
+        let by_id: std::collections::HashMap<&str, &Placement> = layout
+            .placements
+            .iter()
+            .map(|p| (p.id.as_str(), p))
+            .collect();
+
+        // Rebuild cur in the original id order so item_type indices stay aligned.
+        let mut new_cur: Vec<Pose> = Vec::with_capacity(self.ids.len());
+        for id in &self.ids {
+            let p = by_id
+                .get(id.as_str())
+                .ok_or_else(|| format!("reseat: placement \"{id}\" missing from new layout"))?;
+            new_cur.push(Pose {
+                x: p.x,
+                y: p.y,
+                rot: (p.rot.rem_euclid(360) / 90) as u8,
+            });
+        }
+
+        // Rebuild occupancy from scratch.
+        self.occ.fill(None);
+        for (i, &pose) in new_cur.iter().enumerate() {
+            if !self.fits_at(i, &pose) {
+                return Err(format!(
+                    "reseat: placement \"{}\" is out of bounds or overlaps",
+                    self.ids[i]
+                ));
+            }
+            self.insert(i, &pose);
+        }
+
+        self.cur = new_cur;
+        self.cur_score = calc_score(layout).total;
+        if self.cur_score > self.best_score {
+            self.best_score = self.cur_score;
+            self.best.copy_from_slice(&self.cur);
+        }
+
+        // Record the new position in the visited set.
+        let fp = layout_fp(&self.cur, &self.item_type, &self.canonical_rot);
+        if self.visited.len() < MAX_VISITED {
+            self.visited.insert(fp);
+        }
+
+        // Reset per-run counters so the next run starts fresh from this position.
+        self.iter = 0;
+        self.run_visited_count = 0;
+        self.since_improve = 0;
+
+        Ok(())
     }
 
     /// Best score reached by accepting every legal random relocation (the
@@ -287,6 +443,20 @@ impl OptimizerSession {
             self.insert(i, &old_pose);
             return false;
         }
+
+        // Fingerprint of the proposed layout; reject if already explored.
+        self.cur[i] = new_pose;
+        let fp = layout_fp(&self.cur, &self.item_type, &self.canonical_rot);
+        self.cur[i] = old_pose;
+        if self.visited.contains(&fp) {
+            self.insert(i, &old_pose);
+            return false;
+        }
+        if self.visited.len() < MAX_VISITED {
+            self.visited.insert(fp);
+            self.run_visited_count += 1;
+        }
+
         let before = self.edges_of(i, &old_pose);
         let after = self.edges_of(i, &new_pose);
         let delta = after - before;
@@ -337,6 +507,24 @@ impl OptimizerSession {
         let after_b = self.edges_of(b, &nb);
         self.remove(a, &na);
         let after_a = self.edges_of(a, &na);
+
+        // Fingerprint of the proposed swap layout; reject if already explored.
+        // Both a and b are temporarily out of occ here, so we only need to
+        // update cur[] to reflect the proposed state for the hash.
+        self.cur[a] = na;
+        self.cur[b] = nb;
+        let fp = layout_fp(&self.cur, &self.item_type, &self.canonical_rot);
+        self.cur[a] = pa;
+        self.cur[b] = pb;
+        if self.visited.contains(&fp) {
+            self.insert(b, &pb);
+            self.insert(a, &pa);
+            return false;
+        }
+        if self.visited.len() < MAX_VISITED {
+            self.visited.insert(fp);
+            self.run_visited_count += 1;
+        }
 
         let delta = after_a + after_b - before_a - before_b;
         if self.accept(delta, t) {
@@ -450,5 +638,131 @@ impl OptimizerSession {
                 rot: p.rot as i32 * 90,
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{ItemType, Layout, Placement};
+
+    fn dot_layout(grid_w: i32, grid_h: i32, n: usize) -> Layout {
+        let item_types = vec![ItemType {
+            id: "dot".to_string(),
+            tags: vec![],
+            synergies: vec![],
+            cells: vec![(0, 0)],
+        }];
+        let placements = (0..n)
+            .map(|i| Placement {
+                id: format!("p{i}"),
+                type_id: "dot".to_string(),
+                x: i as i32 % grid_w,
+                y: i as i32 / grid_w,
+                rot: 0,
+            })
+            .collect();
+        Layout {
+            item_types,
+            grid_w,
+            grid_h,
+            disabled_cells: vec![],
+            placements,
+        }
+    }
+
+    /// Identity canonical_rot: each rotation maps to itself (all 4 are distinct).
+    const DISTINCT_ROT: [[u8; 4]; 2] = [[0, 1, 2, 3], [0, 1, 2, 3]];
+    /// Symmetric canonical_rot: single-cell type where all rotations are identical.
+    const SYMMETRIC_ROT: [[u8; 4]; 1] = [[0, 0, 0, 0]];
+
+    #[test]
+    fn layout_fp_is_canonical_for_same_type_swap() {
+        // Two identical-type items swapping positions produce the same fingerprint.
+        let p1 = Pose { x: 0, y: 0, rot: 0 };
+        let p2 = Pose { x: 1, y: 0, rot: 0 };
+        let types = vec![0usize, 0usize];
+
+        let fp_before = layout_fp(&[p1, p2], &types, &DISTINCT_ROT);
+        let fp_after = layout_fp(&[p2, p1], &types, &DISTINCT_ROT);
+        assert_eq!(
+            fp_before, fp_after,
+            "same-type swap must produce the same fingerprint"
+        );
+    }
+
+    #[test]
+    fn layout_fp_collapses_symmetric_rotations() {
+        // For a single-cell item (all rotations identical) all 4 rot values
+        // must hash to the same fingerprint.
+        let pos = Pose { x: 0, y: 0, rot: 0 };
+        let types = vec![0usize];
+        let base = layout_fp(&[pos], &types, &SYMMETRIC_ROT);
+        for r in 1..4u8 {
+            let rotated = Pose { rot: r, ..pos };
+            assert_eq!(
+                layout_fp(&[rotated], &types, &SYMMETRIC_ROT),
+                base,
+                "rot={r} must hash the same as rot=0 for a symmetric type"
+            );
+        }
+    }
+
+    #[test]
+    fn layout_fp_differs_for_different_types() {
+        let p1 = Pose { x: 0, y: 0, rot: 0 };
+        let p2 = Pose { x: 1, y: 0, rot: 0 };
+        // Different type assignment.
+        let fp_a = layout_fp(&[p1, p2], &[0, 1], &DISTINCT_ROT);
+        let fp_b = layout_fp(&[p1, p2], &[1, 0], &DISTINCT_ROT);
+        assert_ne!(
+            fp_a, fp_b,
+            "swapping types must produce different fingerprints"
+        );
+    }
+
+    #[test]
+    fn layout_fp_differs_for_different_positions() {
+        let pa = Pose { x: 0, y: 0, rot: 0 };
+        let pb = Pose { x: 2, y: 0, rot: 0 };
+        let types = vec![0usize];
+        assert_ne!(
+            layout_fp(&[pa], &types, &SYMMETRIC_ROT),
+            layout_fp(&[pb], &types, &SYMMETRIC_ROT)
+        );
+    }
+
+    #[test]
+    fn visited_grows_and_is_reported_via_explored() {
+        let layout = dot_layout(3, 3, 2);
+        let mut session = OptimizerSession::new(&layout, 1, 5_000).expect("session");
+        let p0 = session.step(0);
+        let initial_explored = p0.explored;
+        assert!(initial_explored >= 1, "initial layout must be recorded");
+
+        let p1 = session.step(500);
+        assert!(
+            p1.explored >= initial_explored,
+            "explored must not decrease: {} -> {}",
+            initial_explored,
+            p1.explored
+        );
+    }
+
+    #[test]
+    fn single_layout_space_stalls() {
+        // 1x1 grid with 1 single-cell item: only one valid layout.
+        let layout = dot_layout(1, 1, 1);
+        let mut session = OptimizerSession::new(&layout, 0, 200).expect("session");
+        let progress = loop {
+            let p = session.step(50);
+            if p.done {
+                break p;
+            }
+        };
+        assert!(
+            progress.stalled,
+            "must stall when the only layout was already recorded at construction"
+        );
     }
 }
