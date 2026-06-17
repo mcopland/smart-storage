@@ -46,7 +46,8 @@ impl Optimizer {
         Ok(Optimizer { session })
     }
 
-    /// Run up to `n` more iterations; returns `{ placements, score, done, itersDone }`.
+    /// Run up to `n` more iterations; returns
+    /// `{ placements, score, done, itersDone, explored, stalled }`.
     pub fn step(&mut self, n: u32) -> Result<JsValue, JsValue> {
         self.session
             .step(n)
@@ -54,5 +55,23 @@ impl Optimizer {
             .map_err(|e| {
                 JsValue::from_str(&format!("optimizer: failed to serialize progress: {e}"))
             })
+    }
+
+    /// Update the current layout without clearing the visited set.
+    /// The new layout must contain the same placement ids.
+    pub fn reseat(&mut self, layout: JsValue) -> Result<(), JsValue> {
+        let layout: Layout = serde_wasm_bindgen::from_value(layout).map_err(|e| {
+            JsValue::from_str(&format!("optimizer reseat: failed to parse layout: {e}"))
+        })?;
+        self.session
+            .reseat(&layout)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Reset per-run counters (temperature, stagnation, run-visited count) so
+    /// the next `step` loop re-anneals from scratch while keeping the visited
+    /// set and the best layout found so far.
+    pub fn restart_run(&mut self) {
+        self.session.restart_run();
     }
 }

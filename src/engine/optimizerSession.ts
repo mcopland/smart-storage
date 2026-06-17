@@ -8,10 +8,16 @@ export interface OptimizerProgress {
   score: number;
   done: boolean;
   itersDone: number;
+  // Distinct layouts evaluated across all runs in this session.
+  explored: number;
+  // True when the most recently completed run found zero new layouts.
+  stalled: boolean;
 }
 
 export interface OptimizerSession {
   step(n: number): OptimizerProgress;
+  reseat(layout: EngineLayout): void;
+  restart_run(): void;
   free(): void;
 }
 
@@ -22,5 +28,5 @@ export function createOptimizerSession(
   seed: number,
   totalIters: number,
 ): OptimizerSession {
-  return new Optimizer(layout, seed, totalIters);
+  return new Optimizer(layout, seed, totalIters) as unknown as OptimizerSession;
 }
