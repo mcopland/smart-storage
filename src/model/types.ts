@@ -42,6 +42,7 @@ export interface NeighborEntry {
 
 export interface PerItemScore {
   bonus: number;
+  // total equals bonus today; it exists as an extension point for future base scores or penalties.
   total: number;
   neighbors: NeighborEntry[];
 }

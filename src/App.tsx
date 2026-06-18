@@ -230,19 +230,22 @@ export function App() {
     [placements, disabledCells, gridW, typeById, board],
   );
 
-  const toggleDisabledCell = (cx: number, cy: number) => {
-    const key = `${cx},${cy}`;
-    const occupied = placements.some(p =>
-      cellsOf(p, typeById).some(([x, y]) => x === cx && y === cy),
-    );
-    if (occupied) return;
-    setDisabledCells(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
+  const toggleDisabledCell = useCallback(
+    (cx: number, cy: number) => {
+      const key = `${cx},${cy}`;
+      const occupied = placements.some(p =>
+        cellsOf(p, typeById).some(([x, y]) => x === cx && y === cy),
+      );
+      if (occupied) return;
+      setDisabledCells(prev => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    },
+    [placements, typeById],
+  );
 
   const rotateSelection = useCallback(() => {
     if (selectedIds.length === 0) return;
