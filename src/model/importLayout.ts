@@ -1,4 +1,5 @@
-import type { Cell, GridSize, Inventory, ItemType, Placement } from "./types";
+import { cellsOf } from "./geometry";
+import type { Cell, GridSize, Inventory, ItemType, Placement, TypesById } from "./types";
 
 export interface ImportedLayout {
   gridSize?: GridSize;
@@ -103,12 +104,16 @@ function parseItemType(v: unknown, where: string): ItemType {
 
 function parsePlacement(v: unknown, where: string): Placement {
   if (!isRecord(v)) throw new Error(`import failed: ${where} must be an object`);
+  const rot = requireInt(v, "rot", where);
+  if ((((rot % 360) + 360) % 360) % 90 !== 0) {
+    throw new Error(`import failed: ${where} "rot" must be a multiple of 90 (got ${rot})`);
+  }
   return {
     id: requireString(v, "id", where),
     type: requireString(v, "type", where),
     x: requireInt(v, "x", where),
     y: requireInt(v, "y", where),
-    rot: requireInt(v, "rot", where),
+    rot,
   };
 }
 
@@ -140,6 +145,14 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
     if (!Array.isArray(raw.itemTypes))
       throw new Error('import failed: "itemTypes" must be an array');
     out.itemTypes = raw.itemTypes.map((t, i) => parseItemType(t, `itemTypes[${i}]`));
+    const typeIds = new Set<string>();
+    for (let i = 0; i < out.itemTypes.length; i++) {
+      const { id } = out.itemTypes[i];
+      if (typeIds.has(id)) {
+        throw new Error(`import failed: duplicate item type id "${id}" in itemTypes[${i}]`);
+      }
+      typeIds.add(id);
+    }
   }
 
   if (raw.placements !== undefined) {
@@ -147,20 +160,17 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
       throw new Error('import failed: "placements" must be an array');
     out.placements = raw.placements.map((p, i) => parsePlacement(p, `placements[${i}]`));
     const known = new Set((out.itemTypes ?? currentTypes).map(t => t.id));
+    const seenIds = new Set<string>();
     for (let i = 0; i < out.placements.length; i++) {
       const p = out.placements[i];
+      if (seenIds.has(p.id)) {
+        throw new Error(`import failed: duplicate placement id "${p.id}" in placements[${i}]`);
+      }
+      seenIds.add(p.id);
       if (!known.has(p.type)) {
         throw new Error(
           `import failed: placement "${p.id}" references unknown item type "${p.type}"`,
         );
-      }
-      if (out.gridSize) {
-        const { w, h } = out.gridSize;
-        if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) {
-          throw new Error(
-            `import failed: placements[${i}] "${p.id}" origin (${p.x},${p.y}) is out of bounds for grid ${w}x${h}`,
-          );
-        }
       }
     }
   }
@@ -172,6 +182,11 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
     out.disabledCells = raw.disabledCells.map((c, i) => {
       if (typeof c !== "string") {
         throw new Error(`import failed: disabledCells[${i}] must be an "x,y" string`);
+      }
+      if (!/^\d+,\d+$/.test(c)) {
+        throw new Error(
+          `import failed: disabledCells[${i}] must be an "x,y" integer pair string (got "${c}")`,
+        );
       }
       return c;
     });
@@ -187,6 +202,39 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
       inventory[k] = v;
     }
     out.inventory = inventory;
+  }
+
+  // Full footprint validation: bounds, overlap, and disabled-cell checks.
+  // Requires gridSize; only possible once all fields are parsed so disabledCells is available.
+  if (out.gridSize && out.placements && out.placements.length > 0) {
+    const { w, h } = out.gridSize;
+    const typesById: TypesById = Object.fromEntries(
+      (out.itemTypes ?? currentTypes).map(t => [t.id, t]),
+    );
+    const disabled = new Set(out.disabledCells ?? []);
+    const occupied = new Set<string>();
+    for (let i = 0; i < out.placements.length; i++) {
+      const p = out.placements[i];
+      const cells = cellsOf(p, typesById);
+      for (const [cx, cy] of cells) {
+        if (cx < 0 || cy < 0 || cx >= w || cy >= h) {
+          throw new Error(
+            `import failed: placements[${i}] "${p.id}" footprint extends out of bounds for grid ${w}x${h}`,
+          );
+        }
+        if (occupied.has(`${cx},${cy}`)) {
+          throw new Error(
+            `import failed: placements[${i}] "${p.id}" overlaps with a previously validated placement`,
+          );
+        }
+        if (disabled.has(`${cx},${cy}`)) {
+          throw new Error(
+            `import failed: placements[${i}] "${p.id}" footprint lands on a disabled cell`,
+          );
+        }
+      }
+      for (const [cx, cy] of cells) occupied.add(`${cx},${cy}`);
+    }
   }
 
   return out;
