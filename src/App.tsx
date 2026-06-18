@@ -13,22 +13,18 @@ import { Tray } from "./components/panels/Tray";
 import { trayMetrics } from "./components/panels/trayMetrics";
 import { ZoomSlider } from "./components/panels/ZoomSlider";
 import { engineScore } from "./engine/wasm";
-import { INITIAL_INVENTORY, INITIAL_PLACEMENTS, ITEM_TYPES } from "./model/catalog";
+import { INITIAL_INVENTORY, INITIAL_PLACEMENTS } from "./model/catalog";
 import { cellsOf, findFirstFit, fits, resizeFit } from "./model/geometry";
-import type { Cell, GridSize, Inventory, ItemType, Placement } from "./model/types";
+import type { GridSize, Inventory, ItemType, Placement } from "./model/types";
 import { newPlacementId } from "./model/ids";
 import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
 import { useBoard } from "./useBoard";
 import { useGridSizing } from "./useGridSizing";
+import { useItemTypes } from "./useItemTypes";
 import { useLayoutIO } from "./useLayoutIO";
 import { useOptimizer } from "./useOptimizer";
-
-interface ShapeConflict {
-  typeId: string;
-  newCells: Cell[];
-  conflicts: Placement[];
-  itemType: ItemType | undefined;
-}
+import { useSelection } from "./useSelection";
+import { useThemeColors } from "./useThemeColors";
 
 interface Checkpoint {
   gridSize: GridSize;
@@ -46,39 +42,46 @@ export function App() {
     placements: INITIAL_PLACEMENTS,
     inventory: INITIAL_INVENTORY,
   });
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
-  const [highlightedTypeId, setHighlightedTypeId] = useState<string | null>(null);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [draggingFromTray, setDraggingFromTray] = useState<TrayDrag | null>(null);
   const [disabledCells, setDisabledCells] = useState<Set<string>>(new Set());
-  const [itemTypes, setItemTypes] = useState<ItemType[]>(ITEM_TYPES);
   const [newTypeOpen, setNewTypeOpen] = useState(false);
-  const [deleteTypeTarget, setDeleteTypeTarget] = useState<string | null>(null);
-  const [shapeEditorTarget, setShapeEditorTarget] = useState<ItemType | null>(null);
-  const [shapeConflict, setShapeConflict] = useState<ShapeConflict | null>(null);
   const [checkpoint, setCheckpoint] = useState<Checkpoint | null>(null);
-
-  const typeById = useMemo(
-    () => Object.fromEntries(itemTypes.map(tt => [tt.id, tt])) as Record<string, ItemType>,
-    [itemTypes],
-  );
 
   const gridW = gridSize.w,
     gridH = gridSize.h;
   const gap = 4;
 
-  const onUpdateType = useCallback((id: string, patch: Partial<ItemType>) => {
-    setItemTypes(prev => prev.map(tt => (tt.id === id ? { ...tt, ...patch } : tt)));
-  }, []);
+  const {
+    selectedIds,
+    setSelectedIds,
+    selectedTypeId,
+    highlightedTypeId,
+    setHighlightedTypeId,
+    hoveredId,
+    setHoveredId,
+    onSelectPlacements,
+    onSelectTrayType,
+    clearSelection,
+  } = useSelection();
 
-  const onCreateType = useCallback(
-    (newType: ItemType, count: number) => {
-      setItemTypes(prev => [...prev, newType]);
-      board.addStock(newType.id, count);
-    },
-    [board],
-  );
+  const { fg, fgFaint, bg, surface, surfaceSubtle, border } = useThemeColors(t.theme);
+
+  const {
+    itemTypes,
+    setItemTypes,
+    typeById,
+    shapeConflict,
+    setShapeConflict,
+    shapeEditorTarget,
+    setShapeEditorTarget,
+    deleteTypeTarget,
+    setDeleteTypeTarget,
+    onUpdateType,
+    onCreateType,
+    onSaveShape,
+    onResolveShapeConflict,
+    confirmDeleteType,
+  } = useItemTypes({ board, placements, gridW, gridH, disabledCells, clearSelection });
 
   // Set the available stock (inventory count) for a type; lets the user restock
   // an object that's fully placed so they can create more instances of it.
@@ -89,50 +92,6 @@ export function App() {
     },
     [board],
   );
-
-  const onSaveShape = useCallback(
-    (id: string, newCells: Cell[]) => {
-      // Check if any existing placements of this type would collide with the new shape
-      const affected = placements.filter(p => p.type === id);
-      const others = placements.filter(p => p.type !== id);
-
-      // Evaluate each affected placement against a registry where this type has the
-      // proposed cells, without mutating the real catalog.
-      const testTypesById = {
-        ...typeById,
-        [id]: { ...typeById[id], cells: newCells },
-      };
-      const conflicts = affected.filter(
-        p => !fits(p, others, gridW, gridH, p.id, disabledCells, testTypesById),
-      );
-
-      if (conflicts.length > 0) {
-        setShapeConflict({
-          typeId: id,
-          newCells,
-          conflicts,
-          itemType: typeById[id],
-        });
-        return;
-      }
-
-      setItemTypes(prev => prev.map(tt => (tt.id === id ? { ...tt, cells: newCells } : tt)));
-    },
-    [placements, gridW, gridH, disabledCells, typeById],
-  );
-
-  const onResolveShapeConflict = useCallback(() => {
-    if (!shapeConflict) return;
-    const { typeId, newCells, conflicts } = shapeConflict;
-
-    // Remove conflicting placements and return them to inventory.
-    board.removePlacements(conflicts.map(p => p.id));
-
-    // Apply shape change
-    setItemTypes(prev => prev.map(tt => (tt.id === typeId ? { ...tt, cells: newCells } : tt)));
-
-    setShapeConflict(null);
-  }, [shapeConflict, board]);
 
   // Compute cell size: at zoom=100% the grid fits the container.
   const zoom = t.zoom ?? 100;
@@ -154,54 +113,6 @@ export function App() {
   useEffect(() => {
     document.body.className = `theme-${t.theme}`;
   }, [t.theme]);
-
-  // Select/deselect handlers
-  const onSelectPlacements = useCallback((ids: string[]) => {
-    setSelectedIds(ids);
-    if (ids.length > 0) setSelectedTypeId(null);
-  }, []);
-  const onSelectTrayType = useCallback((id: string) => {
-    setSelectedTypeId(prev => (prev === id ? null : id));
-    setSelectedIds([]);
-  }, []);
-
-  // Global click handler: deselect inventory type when clicking outside tray items.
-  // The right-hand panel (Composition rows + the editor itself) is exempt, so
-  // clicking a Composition row to open the editor, or clicking inside the editor,
-  // doesn't immediately clear the selection.
-  useEffect(() => {
-    if (!selectedTypeId) return;
-    const onClick = (e: MouseEvent) => {
-      const target = e.target as Element;
-      if (target.closest("[data-tray-item]")) return;
-      if (target.closest("[data-tray-panel]")) return;
-      if (target.closest("[data-score-panel]")) return;
-      setSelectedTypeId(null);
-    };
-    const timer = setTimeout(() => document.addEventListener("click", onClick), 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("click", onClick);
-    };
-  }, [selectedTypeId]);
-
-  // Global click handler: deselect workspace placements when clicking off the grid.
-  // Mirrors the inventory behaviour: click anywhere outside the grid (or the editor
-  // panel that lets you edit the selection) to deselect.
-  useEffect(() => {
-    if (selectedIds.length === 0) return;
-    const onClick = (e: MouseEvent) => {
-      const target = e.target as Element;
-      if (target.closest("[data-grid-surface]")) return;
-      if (target.closest("[data-score-panel]")) return;
-      setSelectedIds([]);
-    };
-    const timer = setTimeout(() => document.addEventListener("click", onClick), 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("click", onClick);
-    };
-  }, [selectedIds]);
 
   // Safe grid resize: compacts placements toward the shrinking edge so empty
   // space on either side can be reclaimed; only blocks if the occupied span
@@ -265,15 +176,7 @@ export function App() {
     if (selectedIds.length === 0) return;
     board.removePlacements(selectedIds);
     setSelectedIds([]);
-  }, [selectedIds, board]);
-
-  const confirmDeleteType = useCallback(() => {
-    if (!deleteTypeTarget) return;
-    board.removeType(deleteTypeTarget);
-    setItemTypes(prev => prev.filter(tt => tt.id !== deleteTypeTarget));
-    setSelectedTypeId(null);
-    setDeleteTypeTarget(null);
-  }, [deleteTypeTarget, board]);
+  }, [selectedIds, board, setSelectedIds]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -297,7 +200,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [rotateSelection, deleteSelection, draggingFromTray, selectedTypeId]);
+  }, [rotateSelection, deleteSelection, draggingFromTray, selectedTypeId, setDeleteTypeTarget]);
 
   const onTrayDragStart = (e: PointerEvent, type: ItemType) => {
     e.preventDefault();
@@ -327,8 +230,7 @@ export function App() {
 
   // Place every remaining inventory item onto the first free spot it fits.
   const onPlaceAll = useCallback(() => {
-    setSelectedIds([]);
-    setSelectedTypeId(null);
+    clearSelection();
     const placed = [...placements];
     const newInv = { ...inventory };
     for (const tt of itemTypes) {
@@ -343,7 +245,17 @@ export function App() {
       newInv[tt.id] = count;
     }
     board.placeAll(placed, newInv);
-  }, [placements, inventory, itemTypes, gridW, gridH, disabledCells, typeById, board]);
+  }, [
+    placements,
+    inventory,
+    itemTypes,
+    gridW,
+    gridH,
+    disabledCells,
+    typeById,
+    board,
+    clearSelection,
+  ]);
 
   const onSaveState = useCallback(() => {
     setCheckpoint({
@@ -361,9 +273,8 @@ export function App() {
     setDisabledCells(new Set(checkpoint.disabledCells));
     setItemTypes(checkpoint.itemTypes);
     board.applyBoard({ placements: checkpoint.placements, inventory: checkpoint.inventory });
-    setSelectedIds([]);
-    setSelectedTypeId(null);
-  }, [checkpoint, board]);
+    clearSelection();
+  }, [checkpoint, board, clearSelection, setItemTypes]);
 
   const { fileInputRef, onImport, onImportFile, onExport } = useLayoutIO(
     {
@@ -379,8 +290,7 @@ export function App() {
       if (patch.disabledCells) setDisabledCells(new Set(patch.disabledCells));
       if (patch.itemTypes) setItemTypes(patch.itemTypes);
       board.applyBoard({ placements: patch.placements, inventory: patch.inventory });
-      setSelectedIds([]);
-      setSelectedTypeId(null);
+      clearSelection();
     },
   );
 
@@ -406,21 +316,11 @@ export function App() {
     gridW,
     gridH,
     disabledCells,
-    onStart: () => {
-      setSelectedIds([]);
-      setSelectedTypeId(null);
-    },
+    onStart: clearSelection,
     onProgress: p => board.setPlacements(p),
   });
 
   const isWarm = t.theme === "warm";
-  const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
-  const fgFaint = isWarm ? "rgba(60,50,40,0.35)" : "rgba(255,255,255,0.3)";
-  const bg = isWarm ? "#f5f1e8" : "#0e1116";
-  const surface = isWarm ? "#fbf8f0" : "#141a23";
-  const surfaceSubtle = isWarm ? "#f0ebde" : "#0d121a";
-  const border = isWarm ? "rgba(60,50,40,0.1)" : "rgba(255,255,255,0.06)";
-
   const isRail = t.trayLayout === "rail";
   // Panel width is derived from the inventory tile metrics (see trayMetrics), not a fixed number.
   const trayWidth = trayMetrics(isRail).width;
