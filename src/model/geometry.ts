@@ -40,16 +40,6 @@ export function cellsOf(p: Placement, typesById: TypesById): Cell[] {
   return getShapeCells(p, typesById).map(([dx, dy]) => [p.x + dx, p.y + dy]);
 }
 
-export function occupancyMap(placements: Placement[], typesById: TypesById): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const p of placements) {
-    for (const [cx, cy] of cellsOf(p, typesById)) {
-      map.set(`${cx},${cy}`, p.id);
-    }
-  }
-  return map;
-}
-
 // Build a set of "x,y" keys for every cell occupied by the given placements.
 // Cheaper than occupancyMap when we only need membership, not which id owns each cell.
 function occupiedKeys(placements: Placement[], typesById: TypesById): Set<string> {
@@ -137,21 +127,6 @@ export function adjacent(a: Placement, b: Placement, typesById: TypesById): bool
     if (cellsB.has(`${ax},${ay - 1}`)) return true;
   }
   return false;
-}
-
-// Check if ALL placements fit within a given grid size.
-export function allPlacementsFit(
-  placements: Placement[],
-  w: number,
-  h: number,
-  typesById: TypesById,
-): boolean {
-  for (const p of placements) {
-    for (const [cx, cy] of cellsOf(p, typesById)) {
-      if (cx >= w || cy >= h) return false;
-    }
-  }
-  return true;
 }
 
 // Resize the grid to newW x newH, compacting placements toward the origin only
