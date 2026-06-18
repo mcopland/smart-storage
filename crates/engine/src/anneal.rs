@@ -25,7 +25,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 
-use crate::model::{rotate_cells, Cell, Layout, Placement};
+use crate::model::{Cell, Layout, Placement, rotate_cells};
 use crate::score::{calc_score, tag_synergy};
 
 const T_START: f64 = 3.0;
@@ -107,6 +107,12 @@ pub struct OptimizerSession {
     best_layouts: Vec<Vec<Pose>>,
     /// Fingerprints of every entry in `best_layouts` for O(1) dedup.
     best_fps: HashSet<u64>,
+    // Scratch buffers reused by adjacency_fp_cached to avoid per-iteration heap allocation.
+    // TODO: replace sort+hash with an order-independent incremental hash (XOR/wrapping-add of
+    // per-pair sub-hashes) to eliminate the sort entirely.
+    fp_cell_map: HashMap<(i32, i32), usize>,
+    fp_seen: HashSet<(usize, usize)>,
+    fp_pairs: Vec<(u32, u32)>,
 }
 
 /// Connection fingerprint: FNV-1a hash of the sorted multiset of adjacent
@@ -369,6 +375,9 @@ impl OptimizerSession {
             run_visited_count: 0,
             best_layouts: Vec::new(),
             best_fps: HashSet::new(),
+            fp_cell_map: HashMap::new(),
+            fp_seen: HashSet::new(),
+            fp_pairs: Vec::new(),
         };
         session.best_score = session.cur_score;
 
@@ -601,7 +610,7 @@ impl OptimizerSession {
         // Count the proposed layout if it has not been seen before.
         // Revisiting a known layout is allowed; only Metropolis decides acceptance.
         self.cur[i] = new_pose;
-        let fp = adjacency_fp(&self.cur, &self.item_type, &self.rotations);
+        let fp = self.adjacency_fp_cached();
         self.cur[i] = old_pose;
         if !self.visited.contains(&fp) && self.visited.len() < MAX_VISITED {
             self.visited.insert(fp);
@@ -665,7 +674,7 @@ impl OptimizerSession {
         // update cur[] to reflect the proposed state for the hash.
         self.cur[a] = na;
         self.cur[b] = nb;
-        let fp = adjacency_fp(&self.cur, &self.item_type, &self.rotations);
+        let fp = self.adjacency_fp_cached();
         self.cur[a] = pa;
         self.cur[b] = pb;
         if !self.visited.contains(&fp) && self.visited.len() < MAX_VISITED {
@@ -768,22 +777,68 @@ impl OptimizerSession {
     }
 
     fn insert(&mut self, i: usize, pose: &Pose) {
-        for ci in self.shape_cell_indices(i, pose) {
+        // Direct field access (not via self.shape()) so the immutable borrow of
+        // self.rotations doesn't conflict with the mutable borrow of self.occ.
+        let type_idx = self.item_type[i];
+        let rot = pose.rot as usize;
+        let n = self.rotations[type_idx][rot].len();
+        for k in 0..n {
+            let (dx, dy) = self.rotations[type_idx][rot][k];
+            let ci = ((pose.y + dy) * self.grid_w + (pose.x + dx)) as usize;
             self.occ[ci] = Some(i as u16);
         }
     }
 
     fn remove(&mut self, i: usize, pose: &Pose) {
-        for ci in self.shape_cell_indices(i, pose) {
+        let type_idx = self.item_type[i];
+        let rot = pose.rot as usize;
+        let n = self.rotations[type_idx][rot].len();
+        for k in 0..n {
+            let (dx, dy) = self.rotations[type_idx][rot][k];
+            let ci = ((pose.y + dy) * self.grid_w + (pose.x + dx)) as usize;
             self.occ[ci] = None;
         }
     }
 
-    fn shape_cell_indices(&self, i: usize, pose: &Pose) -> Vec<usize> {
-        self.shape(i, pose)
-            .iter()
-            .map(|&(dx, dy)| self.cell_index(pose.x + dx, pose.y + dy))
-            .collect()
+    /// Like `adjacency_fp` but reuses per-session scratch buffers to avoid
+    /// heap allocation on every hot-loop iteration.
+    fn adjacency_fp_cached(&mut self) -> u64 {
+        self.fp_cell_map.clear();
+        self.fp_seen.clear();
+        self.fp_pairs.clear();
+
+        for (i, pose) in self.cur.iter().enumerate() {
+            for &(dx, dy) in &self.rotations[self.item_type[i]][pose.rot as usize] {
+                self.fp_cell_map.insert((pose.x + dx, pose.y + dy), i);
+            }
+        }
+
+        for (&(cx, cy), &i) in &self.fp_cell_map {
+            for (nx, ny) in [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)] {
+                if let Some(&j) = self.fp_cell_map.get(&(nx, ny)) {
+                    if i != j {
+                        let pair = (i.min(j), i.max(j));
+                        if self.fp_seen.insert(pair) {
+                            let ti = self.item_type[i] as u32;
+                            let tj = self.item_type[j] as u32;
+                            self.fp_pairs.push((ti.min(tj), ti.max(tj)));
+                        }
+                    }
+                }
+            }
+        }
+        self.fp_pairs.sort_unstable();
+
+        const OFFSET: u64 = 14695981039346656037;
+        const PRIME: u64 = 1099511628211;
+        let mut h = OFFSET;
+        for (ta, tb) in &self.fp_pairs {
+            for &b in ta.to_le_bytes().iter().chain(tb.to_le_bytes().iter()) {
+                h ^= b as u64;
+                h = h.wrapping_mul(PRIME);
+            }
+        }
+        h
     }
 
     /// Sum of pair scores between item `i` (hypothetically at `pose`, and not
