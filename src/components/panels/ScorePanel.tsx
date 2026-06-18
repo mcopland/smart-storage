@@ -16,9 +16,21 @@ export interface ScorePanelProps {
   // Layout exploration stats from useOptimizer.
   explored: number;
   stalled: boolean;
+  upperBound: number | null;
+  provablyOptimal: boolean;
+  // Tied-best layout browser.
+  bestLayoutCount: number;
+  bestLayouts: Placement[][];
+  layoutIndex: number;
   onImport: () => void;
   onExport: () => void;
   onOptimize: () => void;
+  onPrevLayout: () => void;
+  onNextLayout: () => void;
+  // Save State / Revert checkpoint.
+  onSaveState: () => void;
+  onRevert: () => void;
+  canRevert: boolean;
   itemTypes: ItemType[];
   typeById: CatalogById;
   onUpdateType: (id: string, patch: Partial<ItemType>) => void;
@@ -49,9 +61,19 @@ export function ScorePanel({
   optimizing,
   explored,
   stalled,
+  upperBound,
+  provablyOptimal,
+  bestLayoutCount,
+  bestLayouts,
+  layoutIndex,
   onImport,
   onExport,
   onOptimize,
+  onPrevLayout,
+  onNextLayout,
+  onSaveState,
+  onRevert,
+  canRevert,
   itemTypes,
   typeById,
   onUpdateType,
@@ -125,6 +147,17 @@ export function ScorePanel({
               return `${c} ${c === 1 ? "cluster" : "clusters"}`;
             })()}
           </div>
+          {upperBound !== null && (
+            <div
+              style={{
+                marginTop: 6,
+                font: '500 10px/1 "JetBrains Mono", monospace',
+                color: provablyOptimal ? ACCENT : fgFaint,
+              }}
+            >
+              {provablyOptimal ? "provably optimal" : `ceiling ${upperBound}`}
+            </div>
+          )}
         </div>
 
         <PanelSection label="Composition" theme={theme}>
@@ -230,7 +263,29 @@ export function ScorePanel({
           backdropFilter: "blur(8px)",
         }}
       >
-        {explored > 0 && (
+        {/* Save State / Revert row */}
+        <div
+          style={{
+            padding: "10px 14px 0",
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 8,
+          }}
+        >
+          <button onClick={onSaveState} style={btnStyle(theme, "ghost")}>
+            Save State
+          </button>
+          <button
+            onClick={onRevert}
+            style={btnStyle(theme, "ghost", !canRevert)}
+            disabled={!canRevert}
+          >
+            Revert
+          </button>
+        </div>
+
+        {/* Exploration stats and tied-layout browser */}
+        {(explored > 0 || (!optimizing && bestLayouts.length > 1)) && (
           <div
             style={{
               padding: "8px 14px 0",
@@ -238,13 +293,66 @@ export function ScorePanel({
               color: fgFaint,
               display: "flex",
               flexDirection: "column",
-              gap: 2,
+              gap: 4,
             }}
           >
-            <span>{explored.toLocaleString()} layouts tried</span>
-            {stalled && <span style={{ color: fgDim }}>no new layouts found</span>}
+            {explored > 0 && (
+              <>
+                <span>{explored.toLocaleString()} layouts tried</span>
+                {stalled && <span style={{ color: fgDim }}>no new layouts found</span>}
+                {optimizing && bestLayoutCount > 1 && (
+                  <span>{bestLayoutCount} best-scoring layouts found</span>
+                )}
+              </>
+            )}
+            {/* Prev/Next browser: shown after a run finds multiple tied layouts. */}
+            {!optimizing && bestLayouts.length > 1 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  color: fgDim,
+                  marginTop: 2,
+                }}
+              >
+                <button
+                  onClick={onPrevLayout}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: fgDim,
+                    cursor: "pointer",
+                    padding: "0 2px",
+                    font: "14px/1 Inter, sans-serif",
+                  }}
+                  aria-label="Previous best layout"
+                >
+                  {"<"}
+                </button>
+                <span style={{ font: '11px/1 "JetBrains Mono", monospace' }}>
+                  {layoutIndex + 1} of {bestLayouts.length} best
+                </span>
+                <button
+                  onClick={onNextLayout}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: fgDim,
+                    cursor: "pointer",
+                    padding: "0 2px",
+                    font: "14px/1 Inter, sans-serif",
+                  }}
+                  aria-label="Next best layout"
+                >
+                  {">"}
+                </button>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Import / Export / Optimize */}
         <div
           style={{
             padding: 14,
@@ -260,7 +368,7 @@ export function ScorePanel({
             Export
           </button>
           {/* While solving, the same button cancels the run. */}
-          <button onClick={onOptimize} style={btnStyle(theme, "primary")}>
+          <button onClick={onOptimize} style={btnStyle(theme, optimizing ? "danger" : "primary")}>
             {optimizing ? "Cancel" : "Optimize"}
           </button>
         </div>

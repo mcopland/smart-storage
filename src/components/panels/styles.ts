@@ -5,10 +5,22 @@ export const DANGER = "oklch(0.7 0.18 25)";
 
 export function btnStyle(
   theme: string,
-  kind: "primary" | "ghost",
+  kind: "primary" | "ghost" | "danger",
   disabled?: boolean,
 ): CSSProperties {
   const isWarm = theme === "warm";
+  if (kind === "danger") {
+    return {
+      padding: "8px 12px",
+      background: disabled ? (isWarm ? "rgba(60,50,40,0.08)" : "rgba(255,255,255,0.05)") : DANGER,
+      color: disabled ? (isWarm ? "rgba(60,50,40,0.4)" : "rgba(255,255,255,0.3)") : "#fff",
+      border: "none",
+      borderRadius: 6,
+      font: "500 12px/1 Inter, sans-serif",
+      letterSpacing: "0.02em",
+      cursor: disabled ? "not-allowed" : "pointer",
+    };
+  }
   if (kind === "primary") {
     return {
       padding: "8px 12px",
