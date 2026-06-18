@@ -74,4 +74,15 @@ impl Optimizer {
     pub fn restart_run(&mut self) {
         self.session.restart_run();
     }
+
+    /// Return all distinct layouts that tie the current best score as an array
+    /// of placement arrays: `[[{id, type, x, y, rot}, ...], ...]`.
+    pub fn best_layouts(&self) -> Result<JsValue, JsValue> {
+        self.session
+            .best_layouts()
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| {
+                JsValue::from_str(&format!("optimizer: failed to serialize best_layouts: {e}"))
+            })
+    }
 }

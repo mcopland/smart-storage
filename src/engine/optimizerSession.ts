@@ -12,12 +12,23 @@ export interface OptimizerProgress {
   explored: number;
   // True when the most recently completed run found zero new layouts.
   stalled: boolean;
+  // Number of distinct tied-best layouts collected so far.
+  bestLayoutCount: number;
+  // Provable upper bound on the achievable score, computed at session construction.
+  upperBound: number;
+  // True when score equals upperBound: the best found score is provably optimal.
+  provablyOptimal: boolean;
+  // Only present in the terminal message (done: true). All distinct layouts
+  // that tie the best score, for the Prev/Next browser.
+  bestLayouts?: Placement[][];
 }
 
 export interface OptimizerSession {
   step(n: number): OptimizerProgress;
   reseat(layout: EngineLayout): void;
   restart_run(): void;
+  // Return all tied-best layouts collected during this session.
+  best_layouts(): Placement[][];
   free(): void;
 }
 

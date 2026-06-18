@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createOptimizerClient, type OptimizerClient } from "./engine/optimizer";
 import type { ItemType, Placement } from "./model/types";
 import { boardSignature } from "./model/searchSpace";
@@ -15,6 +15,17 @@ export interface OptimizerStats {
   // Best score reported by the engine across all runs. Null until the first
   // progress report arrives.
   bestScore: number | null;
+  // Live count of distinct tied-best layouts known so far.
+  bestLayoutCount: number;
+  // All tied-best layouts received in the terminal message. Empty while
+  // a run is in progress or before the first run completes.
+  bestLayouts: Placement[][];
+  // Index into bestLayouts that is currently applied to the board.
+  layoutIndex: number;
+  // Provable upper bound on the achievable score; null until the first run.
+  upperBound: number | null;
+  // True when the best score equals the upper bound (provably optimal).
+  provablyOptimal: boolean;
 }
 
 export function useOptimizer({
@@ -34,17 +45,35 @@ export function useOptimizer({
   // Called once when a run begins (so App can clear selection state).
   onStart: () => void;
   onProgress: (placements: Placement[]) => void;
-}): { optimizing: boolean; onOptimize: () => void } & OptimizerStats {
+}): {
+  optimizing: boolean;
+  onOptimize: () => void;
+  onPrevLayout: () => void;
+  onNextLayout: () => void;
+} & OptimizerStats {
   const [optimizing, setOptimizing] = useState(false);
   const [explored, setExplored] = useState(0);
   const [stalled, setStalled] = useState(false);
   const [bestScore, setBestScore] = useState<number | null>(null);
+  const [bestLayoutCount, setBestLayoutCount] = useState(0);
+  const [bestLayouts, setBestLayouts] = useState<Placement[][]>([]);
+  const [layoutIndex, setLayoutIndex] = useState(0);
+  const [upperBound, setUpperBound] = useState<number | null>(null);
+  const [provablyOptimal, setProvablyOptimal] = useState(false);
 
-  // Stable refs so callbacks created inside useEffect see the latest values.
+  // Stable refs so callbacks created inside useEffect see the latest values
+  // without becoming stale closures.
   const onProgressRef = useRef(onProgress);
   const onStartRef = useRef(onStart);
   onProgressRef.current = onProgress;
   onStartRef.current = onStart;
+
+  // Refs that mirror state values so stable callbacks (Prev/Next) can read
+  // the latest values without depending on them.
+  const bestLayoutsRef = useRef<Placement[][]>([]);
+  const layoutIndexRef = useRef(0);
+  bestLayoutsRef.current = bestLayouts;
+  layoutIndexRef.current = layoutIndex;
 
   const clientRef = useRef<OptimizerClient | null>(null);
   // The board signature at the time of the last init call.
@@ -63,8 +92,15 @@ export function useOptimizer({
         setExplored(progress.explored);
         setStalled(progress.stalled);
         setBestScore(prev => (prev === null || progress.score > prev ? progress.score : prev));
+        setBestLayoutCount(progress.bestLayoutCount);
+        setUpperBound(progress.upperBound);
+        setProvablyOptimal(progress.provablyOptimal);
         if (progress.done) {
           setOptimizing(false);
+          if (progress.bestLayouts && progress.bestLayouts.length > 0) {
+            setBestLayouts(progress.bestLayouts);
+            setLayoutIndex(0);
+          }
         }
       },
       message => {
@@ -113,6 +149,11 @@ export function useOptimizer({
       setExplored(0);
       setStalled(false);
       setBestScore(null);
+      setBestLayoutCount(0);
+      setBestLayouts([]);
+      setLayoutIndex(0);
+      setUpperBound(null);
+      setProvablyOptimal(false);
     } else {
       // Same composition, positions/rotations changed: keep visited set.
       client.reseat(layout);
@@ -131,9 +172,40 @@ export function useOptimizer({
     if (placements.length === 0) return;
 
     setOptimizing(true);
+    setBestLayouts([]);
+    setLayoutIndex(0);
     onStartRef.current();
     client.run(CHUNK_ITERS, CHUNK_DELAY_MS);
   };
 
-  return { optimizing, onOptimize, explored, stalled, bestScore };
+  const onPrevLayout = useCallback(() => {
+    const layouts = bestLayoutsRef.current;
+    if (layouts.length < 2) return;
+    const next = (layoutIndexRef.current - 1 + layouts.length) % layouts.length;
+    setLayoutIndex(next);
+    onProgressRef.current(layouts[next]);
+  }, []);
+
+  const onNextLayout = useCallback(() => {
+    const layouts = bestLayoutsRef.current;
+    if (layouts.length < 2) return;
+    const next = (layoutIndexRef.current + 1) % layouts.length;
+    setLayoutIndex(next);
+    onProgressRef.current(layouts[next]);
+  }, []);
+
+  return {
+    optimizing,
+    onOptimize,
+    onPrevLayout,
+    onNextLayout,
+    explored,
+    stalled,
+    bestScore,
+    bestLayoutCount,
+    bestLayouts,
+    layoutIndex,
+    upperBound,
+    provablyOptimal,
+  };
 }

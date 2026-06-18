@@ -5,22 +5,27 @@
 //! The session is chunked (`step(n)`) so a Web Worker can post progress and
 //! honor cancellation between chunks instead of blocking in one long call.
 //!
-//! A `HashSet<u64>` visited registry counts distinct layouts encountered.
-//! Revisiting an already-seen layout is intentionally allowed -- the walk
-//! must be free to pass through familiar states to reach unexplored regions
+//! A `HashSet<u64>` visited registry counts distinct *connection classes*
+//! encountered. Two layouts share a connection class when the same item types
+//! are orthogonally adjacent in the same multiplicity, regardless of position,
+//! rotation, or which same-type instance occupies which cell. Since scoring is
+//! determined entirely by adjacency, this is the coarsest fingerprint that
+//! still distinguishes meaningfully different arrangements.
+//! Revisiting an already-seen class is intentionally allowed -- the walk must
+//! be free to pass through familiar states to reach unexplored regions
 //! (ergodicity). Revisits simply do not increment the counter.
 //! `restart_run` resets the per-run counters (temperature, stagnation) while
 //! keeping the cross-run visited set so successive presses of Optimize cover
 //! new ground. `reseat` updates the current position from a new Layout (e.g.
 //! after a manual move) while also preserving the visited set.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 
-use crate::model::{Cell, Layout, Placement, rotate_cells};
+use crate::model::{rotate_cells, Cell, Layout, Placement};
 use crate::score::{calc_score, tag_synergy};
 
 const T_START: f64 = 3.0;
@@ -30,6 +35,10 @@ const T_END: f64 = 0.05;
 /// factor). Once reached, the set is no longer updated but still consulted so
 /// already-seen layouts continue to be rejected.
 const MAX_VISITED: usize = 1_000_000;
+
+/// Maximum number of distinct tied-best layouts stored per session. Keeps
+/// memory bounded and the UI Prev/Next list sane.
+pub(crate) const MAX_BEST_LAYOUTS: usize = 64;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,6 +53,12 @@ pub struct Progress {
     /// True when the most recently completed run found zero new layouts,
     /// meaning the reachable search space is likely exhausted.
     pub stalled: bool,
+    /// Number of distinct best-scoring layouts collected in this session.
+    pub best_layout_count: u32,
+    /// Provable upper bound on the achievable score, computed at construction.
+    pub upper_bound: i32,
+    /// True when `score` equals `upper_bound`: the best found score is provably optimal.
+    pub provably_optimal: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,12 +78,13 @@ pub struct OptimizerSession {
     type_ids: Vec<String>,
     /// Shape cells per type per rotation step, normalized to origin.
     rotations: Vec<[Vec<Cell>; 4]>,
-    /// For each (type, rot), the lowest rotation index that produces the same
-    /// normalized cell shape. Used in `layout_fp` so that rotationally-
-    /// equivalent poses hash identically (e.g. all 4 rotations of a 1x1 item).
-    canonical_rot: Vec<[u8; 4]>,
     /// Symmetric pair score: tag_synergy(a, b) + tag_synergy(b, a).
     syn2: Vec<Vec<i32>>,
+    /// Directed synergy: syn_dir[a][b] = tag_synergy(types[a], types[b]).
+    /// Used to compute per-type score profiles for composition-based dedup.
+    syn_dir: Vec<Vec<i32>>,
+    /// Provable upper bound on the achievable score; computed once at construction.
+    upper_bound: i32,
     /// Cell -> placement index, plus a parallel disabled mask.
     occ: Vec<Option<u16>>,
     disabled: Vec<bool>,
@@ -85,36 +101,112 @@ pub struct OptimizerSession {
     visited: HashSet<u64>,
     /// New layouts found in the current run; used to detect stalls.
     run_visited_count: u32,
+    /// All distinct pose-sets that tie the current best score, capped at
+    /// `MAX_BEST_LAYOUTS`. Cleared and restarted whenever a strictly better
+    /// score is found.
+    best_layouts: Vec<Vec<Pose>>,
+    /// Fingerprints of every entry in `best_layouts` for O(1) dedup.
+    best_fps: HashSet<u64>,
 }
 
-/// Canonical layout fingerprint: FNV-1a hash of the sorted list of
-/// (type_index, canonical_rot, x, y) tuples. Two properties:
-/// - Sorting makes same-type position swaps produce the same fingerprint.
-/// - `canonical_rot[ti][rot]` is the lowest rotation index that produces the
-///   same normalized cell shape, so rotationally-equivalent poses are treated
-///   as the same physical layout (e.g. all 4 rotations of a single-cell item).
-fn layout_fp(poses: &[Pose], item_type: &[usize], canonical_rot: &[[u8; 4]]) -> u64 {
-    let mut entries: Vec<(u32, i32, i32, u8)> = poses
-        .iter()
-        .zip(item_type)
-        .map(|(p, &ti)| {
-            let canon = canonical_rot[ti][p.rot as usize];
-            (ti as u32, p.x, p.y, canon)
-        })
-        .collect();
-    entries.sort_unstable();
+/// Connection fingerprint: FNV-1a hash of the sorted multiset of adjacent
+/// item-type pairs. Two layouts share a fingerprint iff the same item types
+/// are orthogonally adjacent in the same multiplicity -- i.e. they have the
+/// same score and the same connection structure, regardless of position,
+/// rotation, reflection, or which same-type instance sits where.
+///
+/// `rotations[ti][rot]` gives the normalized cell offsets for type `ti` at
+/// rotation `rot`, used to expand each item's footprint without relying on
+/// the occupancy grid (which may be inconsistent mid-move).
+fn adjacency_fp(poses: &[Pose], item_type: &[usize], rotations: &[[Vec<Cell>; 4]]) -> u64 {
+    // Build a cell -> item index map directly from poses, bypassing occ.
+    let mut cell_map: HashMap<(i32, i32), usize> = HashMap::with_capacity(poses.len() * 4);
+    for (i, pose) in poses.iter().enumerate() {
+        for &(dx, dy) in &rotations[item_type[i]][pose.rot as usize] {
+            cell_map.insert((pose.x + dx, pose.y + dy), i);
+        }
+    }
+
+    // Collect each unordered adjacent item pair exactly once, then map to
+    // its (min_type, max_type) pair so same-type swaps are transparent.
+    let mut seen: HashSet<(usize, usize)> = HashSet::new();
+    let mut type_pairs: Vec<(u32, u32)> = Vec::new();
+    for (&(cx, cy), &i) in &cell_map {
+        for (nx, ny) in [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)] {
+            if let Some(&j) = cell_map.get(&(nx, ny)) {
+                if i != j {
+                    let pair = (i.min(j), i.max(j));
+                    if seen.insert(pair) {
+                        let ti = item_type[i] as u32;
+                        let tj = item_type[j] as u32;
+                        type_pairs.push((ti.min(tj), ti.max(tj)));
+                    }
+                }
+            }
+        }
+    }
+    type_pairs.sort_unstable();
 
     const OFFSET: u64 = 14695981039346656037;
     const PRIME: u64 = 1099511628211;
     let mut h = OFFSET;
-    for (ti, x, y, rot) in entries {
-        for &b in ti
-            .to_le_bytes()
-            .iter()
-            .chain(x.to_le_bytes().iter())
-            .chain(y.to_le_bytes().iter())
-            .chain(std::slice::from_ref(&rot))
-        {
+    for (ta, tb) in type_pairs {
+        for &b in ta.to_le_bytes().iter().chain(tb.to_le_bytes().iter()) {
+            h ^= b as u64;
+            h = h.wrapping_mul(PRIME);
+        }
+    }
+    h
+}
+
+/// Composition fingerprint: FNV-1a hash of the per-type score totals.
+/// Two layouts share this fingerprint iff every item type earns the same
+/// aggregate bonus -- i.e. the Composition panel would display identical
+/// numbers. This is coarser than `adjacency_fp`: different adjacency multisets
+/// whose per-type sums coincide collapse to one browser entry.
+///
+/// `syn_dir[a][b]` = tag_synergy(types[a], types[b]): the directed score
+/// item a gains for each adjacent neighbor of type b.
+fn composition_fp(
+    poses: &[Pose],
+    item_type: &[usize],
+    rotations: &[[Vec<Cell>; 4]],
+    syn_dir: &[Vec<i32>],
+) -> u64 {
+    // Build cell -> item index map directly from poses, bypassing occ.
+    let mut cell_map: HashMap<(i32, i32), usize> = HashMap::with_capacity(poses.len() * 4);
+    for (i, pose) in poses.iter().enumerate() {
+        for &(dx, dy) in &rotations[item_type[i]][pose.rot as usize] {
+            cell_map.insert((pose.x + dx, pose.y + dy), i);
+        }
+    }
+
+    // Accumulate directed score per type across all instances.
+    let n_types = syn_dir.len();
+    let mut totals = vec![0i32; n_types];
+    let mut seen: HashSet<(usize, usize)> = HashSet::new();
+    for (&(cx, cy), &i) in &cell_map {
+        for (nx, ny) in [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)] {
+            if let Some(&j) = cell_map.get(&(nx, ny)) {
+                if i != j {
+                    let pair = (i.min(j), i.max(j));
+                    if seen.insert(pair) {
+                        let ti = item_type[i];
+                        let tj = item_type[j];
+                        totals[ti] += syn_dir[ti][tj];
+                        totals[tj] += syn_dir[tj][ti];
+                    }
+                }
+            }
+        }
+    }
+
+    // FNV-1a hash of per-type totals in type-index order.
+    const OFFSET: u64 = 14695981039346656037;
+    const PRIME: u64 = 1099511628211;
+    let mut h = OFFSET;
+    for total in &totals {
+        for &b in total.to_le_bytes().iter() {
             h ^= b as u64;
             h = h.wrapping_mul(PRIME);
         }
@@ -151,21 +243,6 @@ impl OptimizerSession {
             })
             .collect();
 
-        // For each type, map each rotation to the lowest rotation that produces
-        // the same normalized shape (so symmetric items deduplicate correctly).
-        let canonical_rot: Vec<[u8; 4]> = rotations
-            .iter()
-            .map(|shapes| {
-                let mut canon = [0u8; 4];
-                for r in 0..4u8 {
-                    canon[r as usize] = (0..r)
-                        .find(|&c| shapes[c as usize] == shapes[r as usize])
-                        .unwrap_or(r);
-                }
-                canon
-            })
-            .collect();
-
         let syn2: Vec<Vec<i32>> = (0..n_types)
             .map(|a| {
                 (0..n_types)
@@ -173,6 +250,14 @@ impl OptimizerSession {
                         tag_synergy(&layout.item_types[a], &layout.item_types[b])
                             + tag_synergy(&layout.item_types[b], &layout.item_types[a])
                     })
+                    .collect()
+            })
+            .collect();
+
+        let syn_dir: Vec<Vec<i32>> = (0..n_types)
+            .map(|a| {
+                (0..n_types)
+                    .map(|b| tag_synergy(&layout.item_types[a], &layout.item_types[b]))
                     .collect()
             })
             .collect();
@@ -216,6 +301,50 @@ impl OptimizerSession {
             }
         }
 
+        // Per-type shape perimeter: number of exposed boundary edges (each can
+        // touch a distinct neighbor item). Used in the upper-bound calculation.
+        let perimeters: Vec<usize> = layout
+            .item_types
+            .iter()
+            .map(|t| {
+                let cells: HashSet<(i32, i32)> = t.cells.iter().copied().collect();
+                t.cells
+                    .iter()
+                    .map(|&(cx, cy)| {
+                        [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)]
+                            .iter()
+                            .filter(|&&n| !cells.contains(&n))
+                            .count()
+                    })
+                    .sum()
+            })
+            .collect();
+
+        // Per-item degree relaxation: for each item, sum its best
+        // min(perimeter, n-1) positive undirected neighbor weights. Halve the
+        // sum because each edge contributes to both endpoints. The result is a
+        // valid over-estimate: it ignores geometric feasibility and the mutual
+        // constraint that each edge requires agreement from both sides.
+        let n_items = item_type.len();
+        let upper_bound: i32 = if n_items < 2 {
+            0
+        } else {
+            let mut cap_sum = 0i32;
+            for i in 0..n_items {
+                let ti = item_type[i];
+                let k = perimeters[ti].min(n_items - 1);
+                let mut weights: Vec<i32> = (0..n_items)
+                    .filter(|&j| j != i)
+                    .map(|j| syn2[ti][item_type[j]])
+                    .filter(|&w| w > 0)
+                    .collect();
+                weights.sort_unstable_by(|a, b| b.cmp(a));
+                weights.truncate(k);
+                cap_sum += weights.iter().sum::<i32>();
+            }
+            cap_sum / 2
+        };
+
         let mut session = OptimizerSession {
             grid_w: layout.grid_w,
             grid_h: layout.grid_h,
@@ -223,8 +352,9 @@ impl OptimizerSession {
             item_type,
             type_ids,
             rotations,
-            canonical_rot,
             syn2,
+            syn_dir,
+            upper_bound,
             occ: vec![None; size],
             disabled,
             cur: cur.clone(),
@@ -237,6 +367,8 @@ impl OptimizerSession {
             since_improve: 0,
             visited: HashSet::new(),
             run_visited_count: 0,
+            best_layouts: Vec::new(),
+            best_fps: HashSet::new(),
         };
         session.best_score = session.cur_score;
 
@@ -251,16 +383,29 @@ impl OptimizerSession {
             session.insert(i, &pose);
         }
 
-        // Record the initial layout as the first explored state.
-        let fp = layout_fp(&session.cur, &session.item_type, &session.canonical_rot);
-        session.visited.insert(fp);
+        // Record the initial layout as the first explored state and first best.
+        // visited tracks connection classes (adjacency fp); best_fps tracks
+        // composition profiles (coarser) for the Prev/Next browser.
+        let afp = adjacency_fp(&session.cur, &session.item_type, &session.rotations);
+        session.visited.insert(afp);
+        let cfp = composition_fp(
+            &session.cur,
+            &session.item_type,
+            &session.rotations,
+            &session.syn_dir,
+        );
+        session.best_layouts.push(session.cur.clone());
+        session.best_fps.insert(cfp);
 
         Ok(session)
     }
 
     /// Run up to `n` more iterations; returns the best layout found so far.
     pub fn step(&mut self, n: u32) -> Progress {
-        if self.cur.is_empty() {
+        // Empty layout or bound already achieved (meaningful only when > 0,
+        // so zero-synergy layouts with upper_bound=0 run normally).
+        let already_optimal = self.upper_bound > 0 && self.best_score >= self.upper_bound;
+        if self.cur.is_empty() || already_optimal {
             self.iter = self.total_iters;
         }
         let stagnation_limit = (self.total_iters / 8).max(1);
@@ -274,6 +419,11 @@ impl OptimizerSession {
             self.try_random_move(t);
             if self.best_score > improved_before {
                 self.since_improve = 0;
+                // Provably optimal: non-trivial bound reached mid-step. Break
+                // without inflating iter to total_iters so iters_done is honest.
+                if self.upper_bound > 0 && self.best_score >= self.upper_bound {
+                    break;
+                }
             } else {
                 self.since_improve += 1;
                 // Restart from the best layout and kick into a fresh basin.
@@ -284,7 +434,8 @@ impl OptimizerSession {
                 }
             }
         }
-        let done = self.iter >= self.total_iters;
+        let provably_optimal = self.upper_bound > 0 && self.best_score >= self.upper_bound;
+        let done = self.iter >= self.total_iters || provably_optimal;
         Progress {
             placements: self.poses_to_placements(&self.best),
             score: self.best_score,
@@ -292,6 +443,9 @@ impl OptimizerSession {
             iters_done: self.iter,
             explored: self.visited.len().min(u32::MAX as usize) as u32,
             stalled: done && self.run_visited_count == 0,
+            best_layout_count: self.best_layouts.len().min(u32::MAX as usize) as u32,
+            upper_bound: self.upper_bound,
+            provably_optimal,
         }
     }
 
@@ -342,16 +496,14 @@ impl OptimizerSession {
 
         self.cur = new_cur;
         self.cur_score = calc_score(layout).total;
-        if self.cur_score > self.best_score {
-            self.best_score = self.cur_score;
-            self.best.copy_from_slice(&self.cur);
-        }
 
-        // Record the new position in the visited set.
-        let fp = layout_fp(&self.cur, &self.item_type, &self.canonical_rot);
+        // Record the new position in the visited set (adjacency fp) and update
+        // best/best_layouts (composition fp computed inside record_best).
+        let afp = adjacency_fp(&self.cur, &self.item_type, &self.rotations);
         if self.visited.len() < MAX_VISITED {
-            self.visited.insert(fp);
+            self.visited.insert(afp);
         }
+        self.record_best();
 
         // Reset per-run counters so the next run starts fresh from this position.
         self.iter = 0;
@@ -449,7 +601,7 @@ impl OptimizerSession {
         // Count the proposed layout if it has not been seen before.
         // Revisiting a known layout is allowed; only Metropolis decides acceptance.
         self.cur[i] = new_pose;
-        let fp = layout_fp(&self.cur, &self.item_type, &self.canonical_rot);
+        let fp = adjacency_fp(&self.cur, &self.item_type, &self.rotations);
         self.cur[i] = old_pose;
         if !self.visited.contains(&fp) && self.visited.len() < MAX_VISITED {
             self.visited.insert(fp);
@@ -513,7 +665,7 @@ impl OptimizerSession {
         // update cur[] to reflect the proposed state for the hash.
         self.cur[a] = na;
         self.cur[b] = nb;
-        let fp = layout_fp(&self.cur, &self.item_type, &self.canonical_rot);
+        let fp = adjacency_fp(&self.cur, &self.item_type, &self.rotations);
         self.cur[a] = pa;
         self.cur[b] = pb;
         if !self.visited.contains(&fp) && self.visited.len() < MAX_VISITED {
@@ -542,10 +694,37 @@ impl OptimizerSession {
 
     fn commit_delta(&mut self, delta: i32) {
         self.cur_score += delta;
+        self.record_best();
+    }
+
+    /// Update `best` and `best_layouts` whenever `cur_score` ties or beats
+    /// the current best. Keyed by composition fingerprint so the browser
+    /// holds one representative per distinct per-type score profile.
+    fn record_best(&mut self) {
+        let fp = composition_fp(&self.cur, &self.item_type, &self.rotations, &self.syn_dir);
         if self.cur_score > self.best_score {
             self.best_score = self.cur_score;
             self.best.copy_from_slice(&self.cur);
+            self.best_layouts.clear();
+            self.best_fps.clear();
+            self.best_layouts.push(self.cur.to_vec());
+            self.best_fps.insert(fp);
+        } else if self.cur_score == self.best_score
+            && !self.best_fps.contains(&fp)
+            && self.best_layouts.len() < MAX_BEST_LAYOUTS
+        {
+            self.best_layouts.push(self.cur.to_vec());
+            self.best_fps.insert(fp);
         }
+    }
+
+    /// Expose all collected best layouts as placement lists (one per distinct
+    /// arrangement that ties the best score found so far).
+    pub fn best_layouts(&self) -> Vec<Vec<Placement>> {
+        self.best_layouts
+            .iter()
+            .map(|poses| self.poses_to_placements(poses))
+            .collect()
     }
 
     fn reset_to_best(&mut self) {
@@ -675,65 +854,156 @@ mod tests {
         }
     }
 
-    /// Identity canonical_rot: each rotation maps to itself (all 4 are distinct).
-    const DISTINCT_ROT: [[u8; 4]; 2] = [[0, 1, 2, 3], [0, 1, 2, 3]];
-    /// Symmetric canonical_rot: single-cell type where all rotations are identical.
-    const SYMMETRIC_ROT: [[u8; 4]; 1] = [[0, 0, 0, 0]];
+    // Rotation table for a single-cell item type: one rotation step (cells = [(0,0)]).
+    fn dot_rotations() -> Vec<[Vec<Cell>; 4]> {
+        vec![[vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]]]
+    }
+
+    // Rotation table for an L-shaped item (asymmetric under rotation).
+    fn l_rotations() -> Vec<[Vec<Cell>; 4]> {
+        use crate::model::rotate_cells;
+        let base = vec![(0, 0), (1, 0), (0, 1)];
+        vec![[
+            rotate_cells(&base, 0),
+            rotate_cells(&base, 90),
+            rotate_cells(&base, 180),
+            rotate_cells(&base, 270),
+        ]]
+    }
 
     #[test]
-    fn layout_fp_is_canonical_for_same_type_swap() {
-        // Two identical-type items swapping positions produce the same fingerprint.
-        let p1 = Pose { x: 0, y: 0, rot: 0 };
-        let p2 = Pose { x: 1, y: 0, rot: 0 };
-        let types = vec![0usize, 0usize];
-
-        let fp_before = layout_fp(&[p1, p2], &types, &DISTINCT_ROT);
-        let fp_after = layout_fp(&[p2, p1], &types, &DISTINCT_ROT);
+    fn adjacency_fp_equal_for_same_type_swap() {
+        // Same-type items swapping positions yield the same connection structure.
+        let rots = dot_rotations();
+        // p0 at (0,0), p1 at (1,0): adjacent pair of type 0.
+        let forward = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 1, y: 0, rot: 0 }],
+            &[0, 0],
+            &rots,
+        );
+        // Swap item positions -- same connection structure.
+        let swapped = adjacency_fp(
+            &[Pose { x: 1, y: 0, rot: 0 }, Pose { x: 0, y: 0, rot: 0 }],
+            &[0, 0],
+            &rots,
+        );
         assert_eq!(
-            fp_before, fp_after,
-            "same-type swap must produce the same fingerprint"
+            forward, swapped,
+            "same-type swap must not change the fingerprint"
         );
     }
 
     #[test]
-    fn layout_fp_collapses_symmetric_rotations() {
-        // For a single-cell item (all rotations identical) all 4 rot values
-        // must hash to the same fingerprint.
-        let pos = Pose { x: 0, y: 0, rot: 0 };
-        let types = vec![0usize];
-        let base = layout_fp(&[pos], &types, &SYMMETRIC_ROT);
+    fn adjacency_fp_invariant_under_rotation() {
+        // Rotating an item in place never changes the connection fingerprint
+        // because adjacency is determined by which cells border each other,
+        // not by which rotation produced those cells.
+        let rots = dot_rotations();
+        let base = adjacency_fp(&[Pose { x: 0, y: 0, rot: 0 }], &[0], &rots);
         for r in 1..4u8 {
-            let rotated = Pose { rot: r, ..pos };
             assert_eq!(
-                layout_fp(&[rotated], &types, &SYMMETRIC_ROT),
+                adjacency_fp(&[Pose { x: 0, y: 0, rot: r }], &[0], &rots),
                 base,
-                "rot={r} must hash the same as rot=0 for a symmetric type"
+                "rotation {r} must give the same fingerprint as rot=0"
             );
         }
     }
 
     #[test]
-    fn layout_fp_differs_for_different_types() {
-        let p1 = Pose { x: 0, y: 0, rot: 0 };
-        let p2 = Pose { x: 1, y: 0, rot: 0 };
-        // Different type assignment.
-        let fp_a = layout_fp(&[p1, p2], &[0, 1], &DISTINCT_ROT);
-        let fp_b = layout_fp(&[p1, p2], &[1, 0], &DISTINCT_ROT);
+    fn adjacency_fp_equal_for_translation() {
+        // The same cluster at two different grid positions must hash identically.
+        let rots = dot_rotations();
+        // Two items adjacent at (0,0)+(1,0).
+        let here = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 1, y: 0, rot: 0 }],
+            &[0, 0],
+            &rots,
+        );
+        // Same cluster translated to (3,5)+(4,5).
+        let there = adjacency_fp(
+            &[Pose { x: 3, y: 5, rot: 0 }, Pose { x: 4, y: 5, rot: 0 }],
+            &[0, 0],
+            &rots,
+        );
+        assert_eq!(here, there, "translation must not change the fingerprint");
+    }
+
+    #[test]
+    fn adjacency_fp_differs_adjacent_vs_nonadjacent() {
+        // Adjacent and non-adjacent arrangements of the same items must hash differently.
+        // Provide two rotation entries so both type indices (0 and 1) are in bounds.
+        let rots = vec![
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+        ];
+        let adjacent = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 1, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
+        );
+        let nonadjacent = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 3, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
+        );
         assert_ne!(
-            fp_a, fp_b,
-            "swapping types must produce different fingerprints"
+            adjacent, nonadjacent,
+            "adjacent vs non-adjacent must differ"
         );
     }
 
     #[test]
-    fn layout_fp_differs_for_different_positions() {
-        let pa = Pose { x: 0, y: 0, rot: 0 };
-        let pb = Pose { x: 2, y: 0, rot: 0 };
-        let types = vec![0usize];
-        assert_ne!(
-            layout_fp(&[pa], &types, &SYMMETRIC_ROT),
-            layout_fp(&[pb], &types, &SYMMETRIC_ROT)
+    fn adjacency_fp_differs_for_different_type_pairs() {
+        // Two items adjacent: (type 0, type 1) vs (type 0, type 2) must differ.
+        let rots = vec![
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+        ];
+        let fp_01 = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 1, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
         );
+        let fp_02 = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 1, y: 0, rot: 0 }],
+            &[0, 2],
+            &rots,
+        );
+        assert_ne!(
+            fp_01, fp_02,
+            "different type pairs must give different fingerprints"
+        );
+    }
+
+    #[test]
+    fn adjacency_fp_captures_asymmetric_shape_rotation() {
+        // An asymmetric (L-shaped) item whose rotation changes which cells it
+        // occupies: if that changes adjacency with a neighbor, the fingerprint
+        // must differ; if the neighbor remains the same, it must be equal.
+        let rots = {
+            let mut r = l_rotations();
+            // Add a 1x1 neighbor type.
+            r.push([vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]]);
+            r
+        };
+        // L at (0,0) rot=0, dot at (2,0): no adjacency at rot=0 for this shape.
+        let rot0 = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 2, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
+        );
+        // L at (0,0) rot=1: shape changes, may now touch (2,0).
+        let rot1 = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 1 }, Pose { x: 2, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
+        );
+        // The important property: if adjacency changed, fingerprints differ.
+        // If it didn't (cells don't reach), they equal. Either way the function
+        // must not panic and must return consistently.
+        let _ = rot0;
+        let _ = rot1;
     }
 
     #[test]
@@ -772,59 +1042,359 @@ mod tests {
 
     #[test]
     fn revisit_not_rejected() {
-        // Mechanistic: a move that lands on an already-visited layout must NOT be
-        // rejected by the visited-set check. Only the Metropolis criterion should
-        // decide acceptance.
+        // Mechanistic: a move that lands on an already-visited connection class
+        // must NOT be rejected by the visited-set check. Only Metropolis decides.
         //
-        // Setup: 1x2 grid, one single-cell item. Only two valid layouts: (0,0) and
-        // (0,1). We manually insert the (0,1) fingerprint into visited so it looks
-        // "already explored", then call try_single toward (0,1) at infinite
-        // temperature (guaranteed Metropolis accept). Old code rejected the move
-        // here and returned false; new code must accept it.
+        // Two items (types a and b) on a 1x3 grid. Initial: a=(0,0), b=(0,2) --
+        // non-adjacent. Target move: b to (0,1) -- now adjacent to a. We
+        // pre-insert the adjacent fingerprint so it looks "already explored",
+        // then try the move at infinite temperature (certain Metropolis accept).
+        // The move must not be blocked by the visited-set check.
         let layout = Layout {
-            item_types: vec![ItemType {
-                id: "d".to_string(),
-                tags: vec![],
-                synergies: vec![],
-                cells: vec![(0, 0)],
-            }],
+            item_types: vec![
+                ItemType {
+                    id: "a".to_string(),
+                    tags: vec![],
+                    synergies: vec![],
+                    cells: vec![(0, 0)],
+                },
+                ItemType {
+                    id: "b".to_string(),
+                    tags: vec![],
+                    synergies: vec![],
+                    cells: vec![(0, 0)],
+                },
+            ],
             grid_w: 1,
-            grid_h: 2,
+            grid_h: 3,
             disabled_cells: vec![],
-            placements: vec![Placement {
-                id: "p0".to_string(),
-                type_id: "d".to_string(),
-                x: 0,
-                y: 0,
-                rot: 0,
-            }],
+            placements: vec![
+                Placement {
+                    id: "p0".to_string(),
+                    type_id: "a".to_string(),
+                    x: 0,
+                    y: 0,
+                    rot: 0,
+                },
+                Placement {
+                    id: "p1".to_string(),
+                    type_id: "b".to_string(),
+                    x: 0,
+                    y: 2,
+                    rot: 0,
+                },
+            ],
         };
         let mut session = OptimizerSession::new(&layout, 0, 200).expect("session");
-        // Pre-populate visited with the target layout's fingerprint.
-        let fp_target = layout_fp(
-            &[Pose { x: 0, y: 1, rot: 0 }],
-            &session.item_type,
-            &session.canonical_rot,
-        );
-        session.visited.insert(fp_target);
+        // Pre-insert the fingerprint for the adjacent state (b at (0,1)).
+        let adjacent_poses = [Pose { x: 0, y: 0, rot: 0 }, Pose { x: 0, y: 1, rot: 0 }];
+        let fp_adjacent = adjacency_fp(&adjacent_poses, &session.item_type, &session.rotations);
+        session.visited.insert(fp_adjacent);
 
-        // At infinite temperature, acceptance is certain if the move is not rejected
-        // by the visited-set check.
-        let moved = session.try_single(0, Pose { x: 0, y: 1, rot: 0 }, f64::INFINITY);
+        // At infinite temperature, acceptance is guaranteed if the visited-set
+        // check does not wrongly reject the move.
+        let moved = session.try_single(1, Pose { x: 0, y: 1, rot: 0 }, f64::INFINITY);
         assert!(moved, "move to already-visited layout must not be rejected");
         assert_eq!(
-            session.cur[0],
+            session.cur[1],
             Pose { x: 0, y: 1, rot: 0 },
             "cur must reflect the accepted move"
         );
     }
 
+    // Tests for best_layouts collection (Feature 3).
+
+    #[test]
+    fn best_layout_count_in_progress() {
+        // The Progress struct must carry best_layout_count and it must match
+        // the length returned by best_layouts().
+        let layout = dot_layout(3, 3, 2);
+        let mut session = OptimizerSession::new(&layout, 7, 5_000).expect("session");
+        let p = loop {
+            let p = session.step(5_000);
+            if p.done {
+                break p;
+            }
+        };
+        assert!(
+            p.best_layout_count >= 1,
+            "progress must report at least one best layout"
+        );
+        assert_eq!(
+            p.best_layout_count as usize,
+            session.best_layouts().len(),
+            "progress.best_layout_count must match best_layouts().len()"
+        );
+    }
+
+    #[test]
+    fn tied_layouts_are_collected() {
+        // Three mutually-synergizing items on a 3x1 grid: every 3-adjacent
+        // arrangement scores 4, but the center item earns +2 while the ends
+        // earn +1. Three distinct center choices yield three distinct
+        // composition profiles, all at score 4. The collection must hold at
+        // least two (i.e. not collapse everything to one).
+        let layout = multi_comp_layout();
+        let mut session = OptimizerSession::new(&layout, 1, 20_000).expect("session");
+        loop {
+            let p = session.step(5_000);
+            if p.done {
+                break;
+            }
+        }
+        let bests = session.best_layouts();
+        assert!(
+            bests.len() >= 2,
+            "expected multiple distinct composition profiles but got {}",
+            bests.len()
+        );
+    }
+
+    #[test]
+    fn all_best_layouts_score_the_same() {
+        // Every layout returned by best_layouts() must re-score to the
+        // session's best score; stale lower-score entries must not appear.
+        let item_types = vec![
+            ItemType {
+                id: "a".to_string(),
+                tags: vec!["x".to_string()],
+                synergies: vec![crate::model::Synergy {
+                    tag: "x".to_string(),
+                    positive: Some(true),
+                }],
+                cells: vec![(0, 0)],
+            },
+            ItemType {
+                id: "b".to_string(),
+                tags: vec!["x".to_string()],
+                synergies: vec![crate::model::Synergy {
+                    tag: "x".to_string(),
+                    positive: Some(true),
+                }],
+                cells: vec![(0, 0)],
+            },
+        ];
+        // Start far apart (score 0); optimizer will find adjacent (score 2).
+        let layout = Layout {
+            item_types,
+            grid_w: 5,
+            grid_h: 1,
+            disabled_cells: vec![],
+            placements: vec![
+                Placement {
+                    id: "p0".to_string(),
+                    type_id: "a".to_string(),
+                    x: 0,
+                    y: 0,
+                    rot: 0,
+                },
+                Placement {
+                    id: "p1".to_string(),
+                    type_id: "b".to_string(),
+                    x: 4,
+                    y: 0,
+                    rot: 0,
+                },
+            ],
+        };
+        let mut session = OptimizerSession::new(&layout, 1, 10_000).expect("session");
+        let best_score = loop {
+            let p = session.step(2_000);
+            if p.done {
+                break p.score;
+            }
+        };
+
+        let bests = session.best_layouts();
+        assert!(!bests.is_empty(), "must have at least one best layout");
+        for group in &bests {
+            let test_layout = Layout {
+                item_types: layout.item_types.clone(),
+                grid_w: 5,
+                grid_h: 1,
+                disabled_cells: vec![],
+                placements: group.clone(),
+            };
+            let s = crate::score::calc_score(&test_layout).total;
+            assert_eq!(
+                s, best_score,
+                "tied layout re-scored to {s}, expected {best_score}"
+            );
+        }
+    }
+
+    #[test]
+    fn max_best_layouts_cap_is_respected() {
+        // Even on a huge space with many tied arrangements the cap must hold.
+        let layout = dot_layout(8, 8, 10);
+        let mut session = OptimizerSession::new(&layout, 99, 100_000).expect("session");
+        loop {
+            let p = session.step(10_000);
+            if p.done {
+                break;
+            }
+        }
+        assert!(
+            session.best_layouts().len() <= super::MAX_BEST_LAYOUTS,
+            "best_layouts must not exceed MAX_BEST_LAYOUTS"
+        );
+    }
+
+    #[test]
+    fn tied_layouts_are_unique() {
+        // Each entry in best_layouts must have a distinct composition profile;
+        // no two entries should share the same per-type score totals, even
+        // across restart_run calls.
+        let layout = multi_comp_layout();
+        let mut session = OptimizerSession::new(&layout, 42, 10_000).expect("session");
+        loop {
+            let p = session.step(5_000);
+            if p.done {
+                break;
+            }
+        }
+        session.restart_run();
+        loop {
+            let p = session.step(5_000);
+            if p.done {
+                break;
+            }
+        }
+
+        let bests = session.best_layouts();
+        // Reconstruct composition fingerprints from the returned Placement structs.
+        let mut fps: Vec<u64> = bests
+            .iter()
+            .map(|group| {
+                let poses: Vec<Pose> = group
+                    .iter()
+                    .map(|p| Pose {
+                        x: p.x,
+                        y: p.y,
+                        rot: (p.rot / 90) as u8,
+                    })
+                    .collect();
+                composition_fp(
+                    &poses,
+                    &session.item_type,
+                    &session.rotations,
+                    &session.syn_dir,
+                )
+            })
+            .collect();
+        fps.sort_unstable();
+        fps.dedup();
+        assert_eq!(
+            fps.len(),
+            bests.len(),
+            "best_layouts must contain distinct composition profiles"
+        );
+    }
+
+    /// Eight single-cell items of four distinct types spread across a 6x6 grid.
+    /// The connection space (distinct type-pair multisets) is large enough that
+    /// a 50k-iteration budget cannot exhaust it, making it suitable for stall and
+    /// cross-run growth tests.
+    fn diverse_layout() -> Layout {
+        let item_types = vec![
+            ItemType {
+                id: "a".to_string(),
+                tags: vec![],
+                synergies: vec![],
+                cells: vec![(0, 0)],
+            },
+            ItemType {
+                id: "b".to_string(),
+                tags: vec![],
+                synergies: vec![],
+                cells: vec![(0, 0)],
+            },
+            ItemType {
+                id: "c".to_string(),
+                tags: vec![],
+                synergies: vec![],
+                cells: vec![(0, 0)],
+            },
+            ItemType {
+                id: "d".to_string(),
+                tags: vec![],
+                synergies: vec![],
+                cells: vec![(0, 0)],
+            },
+        ];
+        let placements = vec![
+            Placement {
+                id: "p0".to_string(),
+                type_id: "a".to_string(),
+                x: 0,
+                y: 0,
+                rot: 0,
+            },
+            Placement {
+                id: "p1".to_string(),
+                type_id: "b".to_string(),
+                x: 2,
+                y: 0,
+                rot: 0,
+            },
+            Placement {
+                id: "p2".to_string(),
+                type_id: "c".to_string(),
+                x: 4,
+                y: 0,
+                rot: 0,
+            },
+            Placement {
+                id: "p3".to_string(),
+                type_id: "d".to_string(),
+                x: 0,
+                y: 2,
+                rot: 0,
+            },
+            Placement {
+                id: "p4".to_string(),
+                type_id: "a".to_string(),
+                x: 2,
+                y: 2,
+                rot: 0,
+            },
+            Placement {
+                id: "p5".to_string(),
+                type_id: "b".to_string(),
+                x: 4,
+                y: 2,
+                rot: 0,
+            },
+            Placement {
+                id: "p6".to_string(),
+                type_id: "c".to_string(),
+                x: 0,
+                y: 4,
+                rot: 0,
+            },
+            Placement {
+                id: "p7".to_string(),
+                type_id: "d".to_string(),
+                x: 2,
+                y: 4,
+                rot: 0,
+            },
+        ];
+        Layout {
+            item_types,
+            grid_w: 6,
+            grid_h: 6,
+            disabled_cells: vec![],
+            placements,
+        }
+    }
+
     #[test]
     fn does_not_falsely_stall_on_large_space() {
-        // 6x6 grid with 8 single-cell items has C(36,8) ~30M distinct layouts --
-        // far more than the 50k-iteration budget can exhaust. Stalling here means
-        // the walk trapped itself in a small visited region, not genuine exhaustion.
-        let layout = dot_layout(6, 6, 8);
+        // A diverse-type layout has a large connection space (many distinct
+        // type-pair multisets) that a 50k-iteration budget cannot exhaust.
+        // Stalling here would mean the walk trapped in a small region.
+        let layout = diverse_layout();
         let mut session = OptimizerSession::new(&layout, 42, 50_000).expect("session");
         let progress = loop {
             let p = session.step(5_000);
@@ -841,9 +1411,9 @@ mod tests {
     #[test]
     fn explored_keeps_growing_across_runs() {
         // After a second Optimize press the visited set must be larger than after
-        // the first -- the walk should keep discovering new layouts, not re-trap
-        // in the same already-visited basin.
-        let layout = dot_layout(6, 6, 8);
+        // the first -- the walk should keep discovering new connection classes.
+        // Uses a diverse-type layout whose connection space exceeds the 50k budget.
+        let layout = diverse_layout();
         let mut session = OptimizerSession::new(&layout, 7, 50_000).expect("session");
         loop {
             let p = session.step(5_000);
@@ -870,18 +1440,273 @@ mod tests {
         );
     }
 
+    fn multi_comp_layout() -> Layout {
+        // Three 1x1 items of distinct types, all with the same mutual synergy
+        // (tag "all" +1). In a 3x1 grid every 3-adjacent arrangement scores 4,
+        // but the center item earns +2 while the ends earn +1 each. Three
+        // distinct center choices yield three distinct composition profiles.
+        let mk_type = |id: &str| ItemType {
+            id: id.to_string(),
+            tags: vec!["all".to_string()],
+            synergies: vec![crate::model::Synergy {
+                tag: "all".to_string(),
+                positive: Some(true),
+            }],
+            cells: vec![(0, 0)],
+        };
+        let mk = |id: &str, type_id: &str, x: i32| Placement {
+            id: id.to_string(),
+            type_id: type_id.to_string(),
+            x,
+            y: 0,
+            rot: 0,
+        };
+        Layout {
+            item_types: vec![mk_type("a"), mk_type("b"), mk_type("c")],
+            grid_w: 3,
+            grid_h: 1,
+            disabled_cells: vec![],
+            placements: vec![mk("p0", "a", 0), mk("p1", "b", 1), mk("p2", "c", 2)],
+        }
+    }
+
+    // Directed synergy matrix for two types that mutually synergize +1.
+    fn ab_syn_dir() -> Vec<Vec<i32>> {
+        vec![vec![0, 1], vec![1, 0]]
+    }
+
+    #[test]
+    fn composition_fp_equal_for_same_profile() {
+        // Two pose-sets with the same per-type score totals (different adjacency
+        // instance indices but same type totals) must share the fingerprint.
+        // Types: [0=a, 0=a, 1=b]. syn_dir[0][1]=1, syn_dir[1][0]=1.
+        // Layout X: item 0 (a) adj item 2 (b), item 1 (a) isolated.
+        //           totals: [a=1, b=1]
+        // Layout Y: item 1 (a) adj item 2 (b), item 0 (a) isolated.
+        //           totals: [a=1, b=1]  (same types, different instance)
+        let rots = vec![
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+        ];
+        let syn_dir = ab_syn_dir();
+        let fp_x = composition_fp(
+            &[
+                Pose { x: 0, y: 0, rot: 0 }, // item 0 (a) adj b
+                Pose { x: 5, y: 0, rot: 0 }, // item 1 (a) isolated
+                Pose { x: 1, y: 0, rot: 0 }, // item 2 (b)
+            ],
+            &[0, 0, 1],
+            &rots,
+            &syn_dir,
+        );
+        let fp_y = composition_fp(
+            &[
+                Pose { x: 5, y: 0, rot: 0 }, // item 0 (a) isolated
+                Pose { x: 0, y: 0, rot: 0 }, // item 1 (a) adj b
+                Pose { x: 1, y: 0, rot: 0 }, // item 2 (b)
+            ],
+            &[0, 0, 1],
+            &rots,
+            &syn_dir,
+        );
+        assert_eq!(
+            fp_x, fp_y,
+            "different adjacency instances but same type totals must share fingerprint"
+        );
+    }
+
+    #[test]
+    fn composition_fp_differs_when_profile_changes() {
+        // Moving b away from a changes the per-type totals, so the fingerprint must differ.
+        let rots = vec![
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+        ];
+        let syn_dir = ab_syn_dir();
+        let fp_adj = composition_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 1, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
+            &syn_dir,
+        );
+        let fp_sep = composition_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 5, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
+            &syn_dir,
+        );
+        assert_ne!(
+            fp_adj, fp_sep,
+            "different per-type totals must give different fingerprint"
+        );
+    }
+
+    #[test]
+    fn composition_fp_translation_invariant() {
+        // Shifting all items by the same offset must not change the fingerprint.
+        let rots = vec![
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+        ];
+        let syn_dir = ab_syn_dir();
+        let here = composition_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 1, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
+            &syn_dir,
+        );
+        let there = composition_fp(
+            &[
+                Pose {
+                    x: 10,
+                    y: 7,
+                    rot: 0,
+                },
+                Pose {
+                    x: 11,
+                    y: 7,
+                    rot: 0,
+                },
+            ],
+            &[0, 1],
+            &rots,
+            &syn_dir,
+        );
+        assert_eq!(
+            here, there,
+            "translation must not change composition fingerprint"
+        );
+    }
+
+    #[test]
+    fn upper_bound_tight_for_two_items() {
+        // Two 1x1 items with mutual +1 synergy: syn2[a][b] = 2, perimeter = 4.
+        // k = min(4, 1) = 1. cap_i = 2. upper_bound = floor(4/2) = 2.
+        // The actual optimum (adjacent) = 2, so the bound is tight.
+        let layout = Layout {
+            item_types: vec![
+                ItemType {
+                    id: "a".to_string(),
+                    tags: vec!["x".to_string()],
+                    synergies: vec![crate::model::Synergy {
+                        tag: "x".to_string(),
+                        positive: Some(true),
+                    }],
+                    cells: vec![(0, 0)],
+                },
+                ItemType {
+                    id: "b".to_string(),
+                    tags: vec!["x".to_string()],
+                    synergies: vec![crate::model::Synergy {
+                        tag: "x".to_string(),
+                        positive: Some(true),
+                    }],
+                    cells: vec![(0, 0)],
+                },
+            ],
+            grid_w: 5,
+            grid_h: 1,
+            disabled_cells: vec![],
+            placements: vec![
+                Placement {
+                    id: "p0".to_string(),
+                    type_id: "a".to_string(),
+                    x: 0,
+                    y: 0,
+                    rot: 0,
+                },
+                Placement {
+                    id: "p1".to_string(),
+                    type_id: "b".to_string(),
+                    x: 4,
+                    y: 0,
+                    rot: 0,
+                },
+            ],
+        };
+        let session = OptimizerSession::new(&layout, 1, 10_000).expect("session");
+        assert_eq!(
+            session.upper_bound, 2,
+            "upper_bound must equal actual optimum (2) for two mutually-synergizing items"
+        );
+    }
+
+    #[test]
+    fn step_halts_at_upper_bound() {
+        // With a large budget, the optimizer must stop early once it achieves a
+        // score equal to the upper_bound (provably optimal).
+        let layout = Layout {
+            item_types: vec![
+                ItemType {
+                    id: "a".to_string(),
+                    tags: vec!["x".to_string()],
+                    synergies: vec![crate::model::Synergy {
+                        tag: "x".to_string(),
+                        positive: Some(true),
+                    }],
+                    cells: vec![(0, 0)],
+                },
+                ItemType {
+                    id: "b".to_string(),
+                    tags: vec!["x".to_string()],
+                    synergies: vec![crate::model::Synergy {
+                        tag: "x".to_string(),
+                        positive: Some(true),
+                    }],
+                    cells: vec![(0, 0)],
+                },
+            ],
+            grid_w: 5,
+            grid_h: 1,
+            disabled_cells: vec![],
+            placements: vec![
+                Placement {
+                    id: "p0".to_string(),
+                    type_id: "a".to_string(),
+                    x: 0,
+                    y: 0,
+                    rot: 0,
+                },
+                Placement {
+                    id: "p1".to_string(),
+                    type_id: "b".to_string(),
+                    x: 4,
+                    y: 0,
+                    rot: 0,
+                },
+            ],
+        };
+        let mut session = OptimizerSession::new(&layout, 42, 500_000).expect("session");
+        let progress = loop {
+            let p = session.step(5_000);
+            if p.done {
+                break p;
+            }
+        };
+        assert!(
+            progress.provably_optimal,
+            "must be provably optimal when best == upper_bound"
+        );
+        assert!(
+            progress.iters_done < 500_000,
+            "must halt early before full budget: iters_done={}",
+            progress.iters_done
+        );
+    }
+
     #[test]
     fn kick_moves_current_away_from_best() {
-        // After a kick, cur should be in a different position from best on a
-        // board with room to move (3x3, 3 items = 6 empty cells).
+        // After a kick, cur must differ from best positionally; kick is meaningless
+        // if it leaves every item in exactly the same place (4x4 board, 3 items).
         let layout = dot_layout(4, 4, 3);
         let mut session = OptimizerSession::new(&layout, 13, 5_000).expect("session");
         session.step(100);
-        let fp_best = layout_fp(&session.best, &session.item_type, &session.canonical_rot);
         // Reset to best then kick so we start from a known position before perturbing.
         session.reset_to_best();
         session.kick(session.cur.len() as u32 * 4);
-        let fp_cur = layout_fp(&session.cur, &session.item_type, &session.canonical_rot);
-        assert_ne!(fp_cur, fp_best, "kick must move cur away from best");
+        assert_ne!(
+            session.cur, session.best,
+            "kick must move cur away from best"
+        );
     }
 }

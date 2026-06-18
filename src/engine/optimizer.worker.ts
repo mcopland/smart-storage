@@ -18,6 +18,11 @@ export type WorkerOutgoing =
   | ({ type: "progress" } & OptimizerProgress)
   | { type: "error"; message: string };
 
+// Keep running across per-run budgets until the search stalls (no new layouts
+// in a complete run) or this wall-clock limit is exceeded. On a large grid
+// "stalled" rarely fires, so the cap is the practical stop for those cases.
+const RUN_TIME_CAP_MS = 60_000;
+
 let session: OptimizerSession | null = null;
 let running = false;
 
@@ -48,15 +53,49 @@ onmessage = async (e: MessageEvent<WorkerIncoming>) => {
       running = true;
       session.restart_run();
       const { chunkIters, chunkDelayMs } = msg;
+      const startMs = Date.now();
+      let sentTerminal = false;
+
       while (running) {
         const progress = session.step(chunkIters);
-        postMessage({ type: "progress", ...progress } satisfies WorkerOutgoing);
+        const elapsed = Date.now() - startMs;
+
         if (progress.done) {
-          running = false;
-          break;
+          const shouldStop =
+            progress.stalled || elapsed >= RUN_TIME_CAP_MS || progress.provablyOptimal;
+          if (shouldStop) {
+            // Natural terminal stop: include all tied-best layouts.
+            postMessage({
+              type: "progress",
+              ...progress,
+              bestLayouts: session.best_layouts(),
+            } satisfies WorkerOutgoing);
+            sentTerminal = true;
+            running = false;
+            break;
+          }
+          // Budget exhausted but still exploring: restart and keep going.
+          // Force done: false so the main thread doesn't flip optimizing off.
+          session.restart_run();
+          postMessage({ type: "progress", ...progress, done: false } satisfies WorkerOutgoing);
+        } else {
+          postMessage({ type: "progress", ...progress } satisfies WorkerOutgoing);
         }
+
         // Yield to the event loop so `pause` messages can be processed between chunks.
         await new Promise<void>(resolve => setTimeout(resolve, chunkDelayMs));
+      }
+
+      // Paused externally: send a terminal snapshot with bestLayouts so the
+      // main thread can populate the Prev/Next browser.
+      if (!sentTerminal) {
+        const snapshot = session.step(0);
+        postMessage({
+          type: "progress",
+          ...snapshot,
+          done: true,
+          bestLayouts: session.best_layouts(),
+        } satisfies WorkerOutgoing);
       }
     }
   } catch (err) {

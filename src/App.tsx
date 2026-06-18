@@ -15,7 +15,7 @@ import { ZoomSlider } from "./components/panels/ZoomSlider";
 import { engineScore } from "./engine/wasm";
 import { INITIAL_INVENTORY, INITIAL_PLACEMENTS, ITEM_TYPES } from "./model/catalog";
 import { cellsOf, findFirstFit, fits, resizeFit } from "./model/geometry";
-import type { Cell, GridSize, ItemType, Placement } from "./model/types";
+import type { Cell, GridSize, Inventory, ItemType, Placement } from "./model/types";
 import { newPlacementId } from "./model/ids";
 import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
 import { useBoard } from "./useBoard";
@@ -28,6 +28,14 @@ interface ShapeConflict {
   newCells: Cell[];
   conflicts: Placement[];
   itemType: ItemType | undefined;
+}
+
+interface Checkpoint {
+  gridSize: GridSize;
+  placements: Placement[];
+  inventory: Inventory;
+  disabledCells: Set<string>;
+  itemTypes: ItemType[];
 }
 
 export function App() {
@@ -49,6 +57,7 @@ export function App() {
   const [deleteTypeTarget, setDeleteTypeTarget] = useState<string | null>(null);
   const [shapeEditorTarget, setShapeEditorTarget] = useState<ItemType | null>(null);
   const [shapeConflict, setShapeConflict] = useState<ShapeConflict | null>(null);
+  const [checkpoint, setCheckpoint] = useState<Checkpoint | null>(null);
 
   const typeById = useMemo(
     () => Object.fromEntries(itemTypes.map(tt => [tt.id, tt])) as Record<string, ItemType>,
@@ -332,6 +341,26 @@ export function App() {
     board.placeAll(placed, newInv);
   }, [placements, inventory, itemTypes, gridW, gridH, disabledCells, typeById, board]);
 
+  const onSaveState = useCallback(() => {
+    setCheckpoint({
+      gridSize,
+      placements: [...placements],
+      inventory: { ...inventory },
+      disabledCells: new Set(disabledCells),
+      itemTypes: [...itemTypes],
+    });
+  }, [gridSize, placements, inventory, disabledCells, itemTypes]);
+
+  const onRevert = useCallback(() => {
+    if (!checkpoint) return;
+    setGridSize(checkpoint.gridSize);
+    setDisabledCells(new Set(checkpoint.disabledCells));
+    setItemTypes(checkpoint.itemTypes);
+    board.applyBoard({ placements: checkpoint.placements, inventory: checkpoint.inventory });
+    setSelectedIds([]);
+    setSelectedTypeId(null);
+  }, [checkpoint, board]);
+
   const { fileInputRef, onImport, onImportFile, onExport } = useLayoutIO(
     {
       gridSize,
@@ -355,7 +384,19 @@ export function App() {
   // progress chunk applies the best layout found so far, so the board animates
   // toward the result; clicking again while running cancels (the last applied
   // layout stands).
-  const { optimizing, onOptimize, explored, stalled } = useOptimizer({
+  const {
+    optimizing,
+    onOptimize,
+    onPrevLayout,
+    onNextLayout,
+    explored,
+    stalled,
+    bestLayoutCount,
+    bestLayouts,
+    layoutIndex,
+    upperBound,
+    provablyOptimal,
+  } = useOptimizer({
     placements,
     itemTypes,
     gridW,
@@ -595,9 +636,19 @@ export function App() {
             optimizing={optimizing}
             explored={explored}
             stalled={stalled}
+            upperBound={upperBound}
+            provablyOptimal={provablyOptimal}
+            bestLayoutCount={bestLayoutCount}
+            bestLayouts={bestLayouts}
+            layoutIndex={layoutIndex}
             onImport={onImport}
             onExport={onExport}
             onOptimize={onOptimize}
+            onPrevLayout={onPrevLayout}
+            onNextLayout={onNextLayout}
+            onSaveState={onSaveState}
+            onRevert={onRevert}
+            canRevert={checkpoint !== null}
             itemTypes={itemTypes}
             typeById={typeById}
             onUpdateType={onUpdateType}

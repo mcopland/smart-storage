@@ -77,3 +77,146 @@ describe("optimizer session via WASM", () => {
     ).toThrowError(/ghost/);
   });
 });
+
+describe("best_layouts collection", () => {
+  // Small dot layout: all arrangements score 0 so every distinct position ties.
+  const dotLayout = {
+    itemTypes: [{ id: "dot", tags: [], synergies: [], cells: [[0, 0]] as [number, number][] }],
+    gridW: 3,
+    gridH: 3,
+    disabledCells: [] as string[],
+    placements: [
+      { id: "p0", type: "dot", x: 0, y: 0, rot: 0 },
+      { id: "p1", type: "dot", x: 2, y: 2, rot: 0 },
+    ],
+  };
+
+  it("progress includes bestLayoutCount >= 1", () => {
+    const session = createOptimizerSession(dotLayout, 7, 5_000);
+    try {
+      let last!: OptimizerProgress;
+      for (;;) {
+        last = session.step(5_000);
+        if (last.done) break;
+      }
+      expect(last.bestLayoutCount).toBeGreaterThanOrEqual(1);
+    } finally {
+      session.free();
+    }
+  });
+
+  it("best_layouts() returns at least one entry and count matches progress", () => {
+    const session = createOptimizerSession(dotLayout, 1, 20_000);
+    try {
+      let last!: OptimizerProgress;
+      for (;;) {
+        last = session.step(5_000);
+        if (last.done) break;
+      }
+      const bests = session.best_layouts();
+      // With composition-based dedup all-zero-synergy dots share one profile
+      // (per-type totals are all 0 regardless of adjacency) so only one entry.
+      expect(bests.length).toBeGreaterThanOrEqual(1);
+      expect(bests.length).toBe(last.bestLayoutCount);
+      // Each entry must be a non-empty array of placements.
+      for (const group of bests) {
+        expect(group.length).toBe(dotLayout.placements.length);
+        for (const p of group) {
+          expect(p).toHaveProperty("id");
+          expect(p).toHaveProperty("type");
+        }
+      }
+    } finally {
+      session.free();
+    }
+  });
+});
+
+// Small layout with two mutually-synergizing types, reused across several tests.
+const synergyLayout = {
+  itemTypes: [
+    {
+      id: "a",
+      tags: ["x"],
+      synergies: [{ tag: "x", positive: true }],
+      cells: [[0, 0]] as [number, number][],
+    },
+    {
+      id: "b",
+      tags: ["x"],
+      synergies: [{ tag: "x", positive: true }],
+      cells: [[0, 0]] as [number, number][],
+    },
+  ],
+  gridW: 5,
+  gridH: 1,
+  disabledCells: [] as string[],
+  placements: [
+    { id: "p0", type: "a", x: 0, y: 0, rot: 0 },
+    { id: "p1", type: "b", x: 4, y: 0, rot: 0 },
+  ],
+};
+
+describe("composition-based dedup", () => {
+  // Helper: aggregate perItem bonus by type id -> sorted "type:bonus|..." string.
+  function compositionSignature(
+    placements: { id: string; type: string }[],
+    scoreResult: { perItem: Record<string, { bonus: number }> },
+  ): string {
+    const typeBonus: Record<string, number> = {};
+    for (const p of placements) {
+      typeBonus[p.type] = (typeBonus[p.type] ?? 0) + (scoreResult.perItem[p.id]?.bonus ?? 0);
+    }
+    return Object.entries(typeBonus)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join("|");
+  }
+
+  it("best_layouts() contains no duplicate composition profiles", () => {
+    // Two items with mutual positive synergy on a 5x1 grid. All adjacent
+    // positions yield the same per-type profile {a:+1, b:+1}, so best_layouts()
+    // must return exactly one entry.
+    const session = createOptimizerSession(synergyLayout, 42, 30_000);
+    try {
+      let last!: OptimizerProgress;
+      for (;;) {
+        last = session.step(5_000);
+        if (last.done) break;
+      }
+      const bests = session.best_layouts();
+      expect(bests.length).toBeGreaterThanOrEqual(1);
+      // Rescore each entry and compute composition signatures.
+      const signatures = bests.map(group => {
+        const scored = engineScore({
+          ...synergyLayout,
+          placements: group as (typeof synergyLayout.placements)[number][],
+        });
+        return compositionSignature(group as { id: string; type: string }[], scored);
+      });
+      expect(new Set(signatures).size).toBe(bests.length);
+    } finally {
+      session.free();
+    }
+  });
+
+  it("progress includes upperBound and provablyOptimal", () => {
+    // For the two-item synergy layout the theoretical max is 2 (both adjacent).
+    // Once SA reaches it, provablyOptimal must be true and upperBound >= score.
+    const session = createOptimizerSession(synergyLayout, 42, 200_000);
+    try {
+      let last!: OptimizerProgress;
+      for (;;) {
+        last = session.step(5_000);
+        if (last.done) break;
+      }
+      expect(last.upperBound).toBeGreaterThanOrEqual(last.score);
+      expect(last.provablyOptimal).toBe(last.score >= last.upperBound);
+      expect(last.provablyOptimal).toBe(true);
+      // Run halted before the full budget because the bound was reached.
+      expect(last.itersDone).toBeLessThan(200_000);
+    } finally {
+      session.free();
+    }
+  });
+});
