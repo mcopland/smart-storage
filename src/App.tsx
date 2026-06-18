@@ -145,7 +145,8 @@ export function App() {
   const scoreData = useMemo(() => {
     try {
       return engineScore({ itemTypes, gridW, gridH, placements });
-    } catch {
+    } catch (err) {
+      console.error("live score failed:", err);
       return null;
     }
   }, [itemTypes, gridW, gridH, placements]);
