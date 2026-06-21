@@ -12,9 +12,6 @@ export interface OptimizerStats {
   explored: number;
   // True when the last completed run found no new layouts.
   stalled: boolean;
-  // Best score reported by the engine across all runs. Null until the first
-  // progress report arrives.
-  bestScore: number | null;
   // Live count of distinct tied-best layouts known so far.
   bestLayoutCount: number;
   // All tied-best layouts received in the terminal message. Empty while
@@ -54,7 +51,6 @@ export function useOptimizer({
   const [optimizing, setOptimizing] = useState(false);
   const [explored, setExplored] = useState(0);
   const [stalled, setStalled] = useState(false);
-  const [bestScore, setBestScore] = useState<number | null>(null);
   const [bestLayoutCount, setBestLayoutCount] = useState(0);
   const [bestLayouts, setBestLayouts] = useState<Placement[][]>([]);
   const [layoutIndex, setLayoutIndex] = useState(0);
@@ -91,7 +87,6 @@ export function useOptimizer({
         onProgressRef.current(progress.placements);
         setExplored(progress.explored);
         setStalled(progress.stalled);
-        setBestScore(prev => (prev === null || progress.score > prev ? progress.score : prev));
         setBestLayoutCount(progress.bestLayoutCount);
         setUpperBound(progress.upperBound);
         setProvablyOptimal(progress.provablyOptimal);
@@ -148,7 +143,6 @@ export function useOptimizer({
       initializedRef.current = true;
       setExplored(0);
       setStalled(false);
-      setBestScore(null);
       setBestLayoutCount(0);
       setBestLayouts([]);
       setLayoutIndex(0);
@@ -201,7 +195,6 @@ export function useOptimizer({
     onNextLayout,
     explored,
     stalled,
-    bestScore,
     bestLayoutCount,
     bestLayouts,
     layoutIndex,

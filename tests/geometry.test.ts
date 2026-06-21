@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  allPlacementsFit,
   cellsFitIn,
   findFirstFit,
   fits,
@@ -68,30 +67,25 @@ describe("shape dimensions", () => {
   });
 });
 
-describe("allPlacementsFit / resizeFit", () => {
+describe("resizeFit", () => {
   const single: ItemTypeCore = { id: "s", tags: [], synergies: [], cells: [[0, 0]] };
   const typesById = { s: single };
   const p = (id: string, x: number, y: number): Placement => ({ id, type: "s", x, y, rot: 0 });
 
-  it("allPlacementsFit detects overflow", () => {
-    expect(allPlacementsFit([p("a", 3, 3)], 4, 4, typesById)).toBe(true);
-    expect(allPlacementsFit([p("a", 4, 3)], 4, 4, typesById)).toBe(false);
-  });
-
-  it("resizeFit leaves placements alone when they already fit", () => {
+  it("leaves placements alone when they already fit", () => {
     const res = resizeFit([p("a", 1, 1)], new Set<string>(), 4, 4, typesById);
     expect(res).not.toBeNull();
     expect(res!.placements).toEqual([p("a", 1, 1)]);
   });
 
-  it("resizeFit shifts toward origin only as much as needed", () => {
+  it("shifts toward origin only as much as needed", () => {
     // Items span x 2..5; shrinking to width 4 needs a shift of 2.
     const res = resizeFit([p("a", 2, 0), p("b", 5, 0)], new Set<string>(), 4, 3, typesById);
     expect(res).not.toBeNull();
     expect(res!.placements.map(q => q.x)).toEqual([0, 3]);
   });
 
-  it("resizeFit shifts disabled cells and drops out-of-range ones", () => {
+  it("shifts disabled cells and drops out-of-range ones", () => {
     const res = resizeFit([p("a", 5, 5)], new Set(["5,0", "0,0"]), 3, 3, typesById);
     expect(res).not.toBeNull();
     // Shift is (3,3): both disabled cells land outside the new grid and drop.
@@ -99,7 +93,7 @@ describe("allPlacementsFit / resizeFit", () => {
     expect(Array.from(res!.disabled)).toEqual([]);
   });
 
-  it("resizeFit returns null when the occupied span cannot fit", () => {
+  it("returns null when the occupied span cannot fit", () => {
     expect(resizeFit([p("a", 0, 0), p("b", 4, 0)], new Set<string>(), 4, 4, typesById)).toBeNull();
   });
 });

@@ -89,7 +89,7 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
   }
 }
 
-interface BoardActions {
+export interface BoardActions {
   setPlacements: (placements: Placement[]) => void;
   setInventory: (inventory: Inventory) => void;
   addPlacement: (placement: Placement) => void;

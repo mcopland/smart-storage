@@ -198,4 +198,97 @@ describe("parseImportedLayout", () => {
       /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
     );
   });
+
+  // --- extended validation (footprint, overlap, disabled, dedup, format) ---
+
+  it("rejects rot that is not a multiple of 90", () => {
+    const bad = { placements: [{ id: "p1", type: "core", x: 0, y: 0, rot: 45 }] };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*"rot"/,
+    );
+  });
+
+  it("rejects a rotated footprint that extends beyond the grid", () => {
+    // capacitor (T-shape, 3 cells wide) at x=2 rot=0 in a 4-wide grid:
+    // rightmost cell lands at cx=4, which is >= gridW=4.
+    const bad = {
+      gridSize: { w: 4, h: 4 },
+      placements: [{ id: "p1", type: "capacitor", x: 2, y: 0, rot: 0 }],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
+    );
+  });
+
+  it("rejects overlapping placements", () => {
+    const bad = {
+      gridSize: { w: 4, h: 4 },
+      placements: [
+        { id: "p1", type: "core", x: 0, y: 0, rot: 0 },
+        { id: "p2", type: "core", x: 0, y: 0, rot: 0 },
+      ],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[1\].*overlap|overlap.*placements\[1\]/i,
+    );
+  });
+
+  it("rejects a placement whose footprint lands on a disabled cell", () => {
+    const bad = {
+      gridSize: { w: 4, h: 4 },
+      disabledCells: ["1,1"],
+      placements: [{ id: "p1", type: "core", x: 1, y: 1, rot: 0 }],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /placements\[0\].*disabled|disabled.*placements\[0\]/i,
+    );
+  });
+
+  it("rejects duplicate placement ids", () => {
+    const bad = {
+      placements: [
+        { id: "dup", type: "core", x: 0, y: 0, rot: 0 },
+        { id: "dup", type: "relay", x: 1, y: 0, rot: 0 },
+      ],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /duplicate.*placement.*id.*"dup"|placement.*id.*"dup".*duplicate/i,
+    );
+  });
+
+  it("rejects duplicate item-type ids", () => {
+    const bad = {
+      itemTypes: [
+        {
+          id: "dup",
+          name: "A",
+          glyph: "hex",
+          color: "#888",
+          tags: [],
+          synergies: [],
+          cells: [[0, 0]],
+        },
+        {
+          id: "dup",
+          name: "B",
+          glyph: "hex",
+          color: "#999",
+          tags: [],
+          synergies: [],
+          cells: [[0, 0]],
+        },
+      ],
+      placements: [],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /duplicate.*item.type.*id.*"dup"|item.type.*id.*"dup".*duplicate/i,
+    );
+  });
+
+  it("rejects disabledCells keys that are not integer-pair strings", () => {
+    const bad = { disabledCells: ["abc,def"] };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+      /disabledCells\[0\]/,
+    );
+  });
 });
