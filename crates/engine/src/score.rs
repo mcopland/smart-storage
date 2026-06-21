@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
-use crate::model::{ItemType, Layout, cells_of};
+use crate::model::{cells_of, ItemType, Layout};
 
 /// One adjacency contribution as seen by a single item. Serializes to the
 /// shape the UI consumes: `{ id, type, delta }`.

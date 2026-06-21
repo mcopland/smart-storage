@@ -25,7 +25,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 
-use crate::model::{Cell, Layout, Placement, rotate_cells};
+use crate::model::{rotate_cells, Cell, Layout, Placement};
 use crate::score::{calc_score, tag_synergy};
 
 const T_START: f64 = 3.0;
@@ -1763,5 +1763,115 @@ mod tests {
             session.cur, session.best,
             "kick must move cur away from best"
         );
+    }
+
+    #[test]
+    fn upper_bound_sound_when_cap_sum_is_odd() {
+        // Regression guard for integer-division soundness: when k-truncation
+        // causes cap_sum to be odd, floor(cap_sum/2) must still be >= the
+        // achievable score because the achievable score is always an integer.
+        //
+        // Setup: 5 type-A items + 1 type-B item; only A->B synergy (+1 each).
+        //   syn2[A][B] = 1.  Single-cell shapes: perimeter = 4.
+        //   n=6, k = min(4, 5) = 4.
+        //   Each A contributes cap = 1 (only B neighbour is positive).
+        //   B contributes cap = 4 (top 4 of 5 A neighbours, one truncated).
+        //   cap_sum = 5 + 4 = 9  (odd).
+        //   upper_bound = floor(9/2) = 4.
+        //   Max achievable = B adjacent to 4 A's = 4.  Bound is tight and correct.
+        //
+        // Soundness argument: the achievable score is always an integer, so
+        // S <= cap_sum/2 (real) implies S <= floor(cap_sum/2).
+        // Integer division is therefore safe; ceil would give 5, which is also
+        // a valid bound but looser (and would prevent early-exit here).
+        let a_syn = crate::model::Synergy {
+            tag: "b".to_string(),
+            positive: Some(true),
+        };
+        let layout = Layout {
+            item_types: vec![
+                ItemType {
+                    id: "a".to_string(),
+                    tags: vec![],
+                    synergies: vec![a_syn],
+                    cells: vec![(0, 0)],
+                },
+                ItemType {
+                    id: "b".to_string(),
+                    tags: vec!["b".to_string()],
+                    synergies: vec![],
+                    cells: vec![(0, 0)],
+                },
+            ],
+            // 3x3 grid: interior cell (1,1) has 4 in-bounds neighbours, so B
+            // can achieve 4 adjacencies when surrounded by A's.
+            grid_w: 3,
+            grid_h: 3,
+            disabled_cells: vec![],
+            placements: vec![
+                Placement {
+                    id: "a0".to_string(),
+                    type_id: "a".to_string(),
+                    x: 0,
+                    y: 0,
+                    rot: 0,
+                },
+                Placement {
+                    id: "a1".to_string(),
+                    type_id: "a".to_string(),
+                    x: 2,
+                    y: 0,
+                    rot: 0,
+                },
+                Placement {
+                    id: "a2".to_string(),
+                    type_id: "a".to_string(),
+                    x: 0,
+                    y: 2,
+                    rot: 0,
+                },
+                Placement {
+                    id: "a3".to_string(),
+                    type_id: "a".to_string(),
+                    x: 2,
+                    y: 2,
+                    rot: 0,
+                },
+                Placement {
+                    id: "a4".to_string(),
+                    type_id: "a".to_string(),
+                    x: 0,
+                    y: 1,
+                    rot: 0,
+                },
+                Placement {
+                    id: "b0".to_string(),
+                    type_id: "b".to_string(),
+                    x: 2,
+                    y: 1,
+                    rot: 0,
+                },
+            ],
+        };
+        let mut session = OptimizerSession::new(&layout, 1, 200_000).expect("session");
+
+        // floor(9/2) = 4; must equal the max achievable (4 A-neighbours x 1).
+        assert_eq!(
+            session.upper_bound, 4,
+            "upper_bound must be floor(odd cap_sum / 2) = 4"
+        );
+
+        // Verify the optimizer reaches this bound (provably optimal).
+        let progress = loop {
+            let p = session.step(5_000);
+            if p.done {
+                break p;
+            }
+        };
+        assert!(
+            progress.provably_optimal,
+            "optimizer must reach the upper_bound and report provably_optimal"
+        );
+        assert_eq!(progress.score, 4, "best score must equal the upper_bound");
     }
 }
