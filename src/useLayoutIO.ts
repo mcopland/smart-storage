@@ -22,6 +22,7 @@ export interface LayoutPatch {
 export function useLayoutIO(
   snapshot: LayoutSnapshot,
   onApply: (patch: LayoutPatch) => void,
+  onError: (msg: string) => void,
 ): {
   fileInputRef: React.RefObject<HTMLInputElement>;
   onImport: () => void;
@@ -37,17 +38,26 @@ export function useLayoutIO(
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        console.error(`Import failed for "${file.name}": result is not a string`);
+        onError(`Could not read "${file.name}": unexpected file content`);
+        return;
+      }
       try {
-        const data = parseImportedLayout(reader.result as string, snapshot.itemTypes);
+        const data = parseImportedLayout(reader.result, snapshot.itemTypes);
         onApply(data);
       } catch (err) {
         console.error(`Import failed for "${file.name}":`, err);
-        alert(
+        onError(
           err instanceof Error
             ? `"${file.name}": ${err.message}`
             : `Could not import "${file.name}".`,
         );
       }
+    };
+    reader.onerror = () => {
+      console.error(`FileReader error reading "${file.name}"`);
+      onError(`Could not read "${file.name}"`);
     };
     reader.readAsText(file);
     e.target.value = "";

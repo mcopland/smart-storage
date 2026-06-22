@@ -33,6 +33,7 @@ export function useOptimizer({
   disabledCells,
   onStart,
   onProgress,
+  onError,
 }: {
   placements: Placement[];
   itemTypes: ItemType[];
@@ -42,6 +43,8 @@ export function useOptimizer({
   // Called once when a run begins (so App can clear selection state).
   onStart: () => void;
   onProgress: (placements: Placement[]) => void;
+  // Called when the worker reports an unrecoverable error.
+  onError?: (msg: string) => void;
 }): {
   optimizing: boolean;
   onOptimize: () => void;
@@ -61,8 +64,10 @@ export function useOptimizer({
   // without becoming stale closures.
   const onProgressRef = useRef(onProgress);
   const onStartRef = useRef(onStart);
+  const onErrorRef = useRef(onError);
   onProgressRef.current = onProgress;
   onStartRef.current = onStart;
+  onErrorRef.current = onError;
 
   // Refs that mirror state values so stable callbacks (Prev/Next) can read
   // the latest values without depending on them.
@@ -100,6 +105,7 @@ export function useOptimizer({
       },
       message => {
         console.error(`Optimize failed: ${message}`);
+        onErrorRef.current?.(`Optimize failed: ${message}`);
         setOptimizing(false);
       },
     );

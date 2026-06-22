@@ -22,9 +22,11 @@ import { useBoard } from "./useBoard";
 import { useGridSizing } from "./useGridSizing";
 import { useItemTypes } from "./useItemTypes";
 import { useLayoutIO } from "./useLayoutIO";
+import { useNotice } from "./useNotice";
 import { useOptimizer } from "./useOptimizer";
 import { useSelection } from "./useSelection";
 import { useThemeColors } from "./useThemeColors";
+import { Notice } from "./components/Notice";
 
 interface Checkpoint {
   gridSize: GridSize;
@@ -63,6 +65,8 @@ export function App() {
     onSelectTrayType,
     clearSelection,
   } = useSelection();
+
+  const { notice, showNotice, dismiss } = useNotice();
 
   const { fg, fgFaint, bg, surface, surfaceSubtle, border } = useThemeColors(t.theme);
 
@@ -291,7 +295,9 @@ export function App() {
       if (patch.itemTypes) setItemTypes(patch.itemTypes);
       board.applyBoard({ placements: patch.placements, inventory: patch.inventory });
       clearSelection();
+      dismiss();
     },
+    showNotice,
   );
 
   // Simulated annealing in the Rust/WASM engine, run in a Web Worker. Each
@@ -316,8 +322,13 @@ export function App() {
     gridW,
     gridH,
     disabledCells,
-    onStart: clearSelection,
+    // Dismiss any stale error notice when a new run begins.
+    onStart: () => {
+      dismiss();
+      clearSelection();
+    },
     onProgress: p => board.setPlacements(p),
+    onError: showNotice,
   });
 
   const isWarm = t.theme === "warm";
@@ -599,6 +610,7 @@ export function App() {
         onClose={() => setShapeConflict(null)}
         theme={t.theme}
       />
+      <Notice notice={notice} theme={t.theme} onDismiss={dismiss} />
     </div>
   );
 }
