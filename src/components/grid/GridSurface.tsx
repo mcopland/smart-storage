@@ -3,6 +3,7 @@ import { fits, getDims, getShapeCells } from "../../model/geometry";
 import { newPlacementId } from "../../model/ids";
 import type { CatalogById, Inventory, Placement, ScoreResult } from "../../model/types";
 import { Glyph } from "../Glyph";
+import { GridBackground } from "./GridBackground";
 import { PlacedItem } from "./PlacedItem";
 import { glyphBox, pickGlyphCell, shapeOutlinePath } from "./shapeOutline";
 import { VizOverlay } from "./VizOverlay";
@@ -313,47 +314,6 @@ export function GridSurface({
     dragState.current = null;
   };
 
-  // Grid background cells
-  const dots = [];
-  for (let y = 0; y < gridH; y++) {
-    for (let x = 0; x < gridW; x++) {
-      const key = `${x},${y}`;
-      const isDisabled = disabledCells?.has(key);
-      dots.push(
-        <div
-          key={key}
-          className="grid-bg"
-          data-cell-x={x}
-          data-cell-y={y}
-          style={{
-            position: "absolute",
-            left: x * (cell + gap),
-            top: y * (cell + gap),
-            width: cell,
-            height: cell,
-            border: `1px solid ${
-              isDisabled
-                ? isWarm
-                  ? "rgba(60,50,40,0.18)"
-                  : "rgba(255,255,255,0.12)"
-                : isWarm
-                  ? "rgba(60,50,40,0.07)"
-                  : "rgba(255,255,255,0.05)"
-            }`,
-            borderRadius: 5,
-            background: isDisabled
-              ? isWarm
-                ? "repeating-linear-gradient(135deg, rgba(60,50,40,0.08) 0 2px, transparent 2px 6px)"
-                : "repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 6px)"
-              : isWarm
-                ? "rgba(255,253,247,0.4)"
-                : "rgba(255,255,255,0.012)",
-          }}
-        />,
-      );
-    }
-  }
-
   const ghostType = ghost ? typesById[ghost.type] : undefined;
   const ghostCells = ghost ? getShapeCells(ghost, typesById) : null;
 
@@ -375,9 +335,14 @@ export function GridSurface({
         touchAction: "none",
       }}
     >
-      <div className="grid-bg" style={{ position: "absolute", inset: 0 }}>
-        {dots}
-      </div>
+      <GridBackground
+        gridW={gridW}
+        gridH={gridH}
+        cell={cell}
+        gap={gap}
+        disabledCells={disabledCells}
+        isWarm={isWarm}
+      />
 
       {/* Placements */}
       {placements.map(p => (
