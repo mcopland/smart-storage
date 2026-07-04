@@ -40,13 +40,19 @@ const MAX_VISITED: usize = 1_000_000;
 /// memory bounded and the UI Prev/Next list sane.
 pub(crate) const MAX_BEST_LAYOUTS: usize = 64;
 
+/// Snapshot returned by [`OptimizerSession::step`], serialized camelCase for
+/// the worker protocol.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
     /// Best layout found so far (not the current annealing state).
     pub placements: Vec<Placement>,
+    /// Score of that best layout.
     pub score: i32,
+    /// True when the run's iteration budget is exhausted (or the score is
+    /// provably optimal); the worker decides whether to restart or stop.
     pub done: bool,
+    /// Iterations consumed in the current run.
     pub iters_done: u32,
     /// Distinct layouts evaluated across all runs in this session.
     pub explored: u32,
@@ -69,6 +75,8 @@ struct Pose {
     rot: u8,
 }
 
+/// A persistent annealing search over one board composition: the current and
+/// best pose sets, the occupancy grid, and the cross-run visited registry.
 pub struct OptimizerSession {
     grid_w: i32,
     grid_h: i32,
@@ -321,6 +329,9 @@ fn compute_upper_bound(item_type: &[usize], perimeters: &[usize], syn2: &[Vec<i3
 }
 
 impl OptimizerSession {
+    /// Build a session from a legal layout. Errors on an invalid grid,
+    /// unknown item types, malformed disabled-cell keys, or placements that
+    /// overlap or fall outside the grid.
     pub fn new(layout: &Layout, seed: u32, total_iters: u32) -> Result<Self, String> {
         if layout.grid_w <= 0 || layout.grid_h <= 0 {
             return Err(format!(

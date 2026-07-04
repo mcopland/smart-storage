@@ -12,23 +12,33 @@ use crate::model::{cells_of, ItemType, Layout};
 /// shape the UI consumes: `{ id, type, delta }`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Neighbor {
+    /// The adjacent placement's id.
     pub id: String,
+    /// The adjacent placement's item-type id (JSON field `type`).
     #[serde(rename = "type")]
     pub type_id: String,
+    /// Points this item gains (or loses) from that neighbor.
     pub delta: i32,
 }
 
+/// Score breakdown for a single placement.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct PerItem {
+    /// Sum of the neighbor deltas.
     pub bonus: i32,
+    /// Equals `bonus` today; an extension point for future base scores.
     pub total: i32,
+    /// Every adjacent neighbor and its contribution.
     pub neighbors: Vec<Neighbor>,
 }
 
+/// The full scoring result: board total plus the per-placement breakdown.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScoreResult {
+    /// Sum of all per-item totals.
     pub total: i32,
+    /// Breakdown keyed by placement id.
     pub per_item: HashMap<String, PerItem>,
 }
 

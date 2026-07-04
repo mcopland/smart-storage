@@ -52,6 +52,8 @@ export interface EngineProgress {
 }
 "#;
 
+/// Score a layout (the app's JSON wire format) and return the total plus the
+/// per-item breakdown.
 #[wasm_bindgen(unchecked_return_type = "EngineScoreResult")]
 pub fn score(layout: JsValue) -> Result<JsValue, JsValue> {
     let layout: Layout = serde_wasm_bindgen::from_value(layout)
@@ -70,6 +72,7 @@ pub struct Optimizer {
 
 #[wasm_bindgen]
 impl Optimizer {
+    /// Create a session over a legal layout; see [`OptimizerSession::new`].
     #[wasm_bindgen(constructor)]
     pub fn new(layout: JsValue, seed: u32, total_iters: u32) -> Result<Optimizer, JsValue> {
         let layout: Layout = serde_wasm_bindgen::from_value(layout)

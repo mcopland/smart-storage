@@ -11,8 +11,11 @@ use crate::error::EngineError;
 /// A cell offset or absolute grid position, deserialized from JSON `[x, y]`.
 pub type Cell = (i32, i32);
 
+/// One scoring rule: an item with this rule gains a point per adjacent
+/// neighbor carrying `tag` (or loses one when the rule is negative).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Synergy {
+    /// The neighbor tag this rule reacts to.
     pub tag: String,
     /// `Some(false)` scores -1; `None` or `Some(true)` scores +1, matching the
     /// JS rule `positive === false ? -1 : 1`.
@@ -20,21 +23,32 @@ pub struct Synergy {
     pub positive: Option<bool>,
 }
 
+/// An item-type definition: identity, tags, synergy rules, and shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ItemType {
+    /// Unique type id referenced by `Placement::type_id`.
     pub id: String,
+    /// Tags this type carries (what neighbors' synergy rules match against).
     pub tags: Vec<String>,
+    /// Scoring rules applied per adjacent neighbor.
     pub synergies: Vec<Synergy>,
+    /// Shape as cell offsets from the type's origin, unrotated.
     pub cells: Vec<Cell>,
 }
 
+/// One placed item instance: which type sits where, at which rotation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Placement {
+    /// Unique placement id.
     pub id: String,
+    /// The `ItemType::id` this placement instantiates (JSON field `type`).
     #[serde(rename = "type")]
     pub type_id: String,
+    /// Grid x of the shape's origin cell.
     pub x: i32,
+    /// Grid y of the shape's origin cell.
     pub y: i32,
+    /// Clockwise rotation in degrees; any multiple of 90.
     pub rot: i32,
 }
 
@@ -43,12 +57,16 @@ pub struct Placement {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Layout {
+    /// The item-type catalog placements reference by id.
     pub item_types: Vec<ItemType>,
+    /// Grid width in cells.
     pub grid_w: i32,
+    /// Grid height in cells.
     pub grid_h: i32,
     /// Disabled cells as `"x,y"` strings, the app's native key format.
     #[serde(default)]
     pub disabled_cells: Vec<String>,
+    /// The placed items.
     pub placements: Vec<Placement>,
 }
 
@@ -104,6 +122,7 @@ pub fn adjacent(
 }
 
 impl Layout {
+    /// Borrowed id -> item-type lookup over the catalog.
     pub fn types_by_id(&self) -> HashMap<&str, &ItemType> {
         self.item_types.iter().map(|t| (t.id.as_str(), t)).collect()
     }
