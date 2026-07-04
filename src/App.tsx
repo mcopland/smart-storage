@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { GridSurface, type TrayDrag } from "./components/grid/GridSurface";
+import { GridSurface } from "./components/grid/GridSurface";
+import type { TrayDrag } from "./components/grid/useTrayGhost";
 import { PannableContainer } from "./components/PannableContainer";
 import { DeleteTypeModal } from "./components/panels/DeleteTypeModal";
 import { GridSizeControls } from "./components/panels/GridSizeControls";
