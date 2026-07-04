@@ -1,25 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AppHeader } from "./components/AppHeader";
+import { AppModals } from "./components/AppModals";
 import { GridSurface } from "./components/grid/GridSurface";
 import type { TrayDrag } from "./components/grid/useTrayGhost";
+import { Notice } from "./components/Notice";
 import { PannableContainer } from "./components/PannableContainer";
-import { DeleteTypeModal } from "./components/panels/DeleteTypeModal";
 import { GridSizeControls } from "./components/panels/GridSizeControls";
-import { InlineTweaks } from "./components/panels/InlineTweaks";
-import { NewTypeModal } from "./components/panels/NewTypeModal";
 import { ScorePanel } from "./components/panels/ScorePanel";
-import { ShapeConflictModal } from "./components/panels/ShapeConflictModal";
-import { ShapeEditorModal } from "./components/panels/ShapeEditorModal";
 import { ShortcutsRow } from "./components/panels/ShortcutsRow";
 import { Tray } from "./components/panels/Tray";
 import { trayMetrics } from "./components/panels/trayMetrics";
 import { ZoomSlider } from "./components/panels/ZoomSlider";
 import { engineScore } from "./engine/wasm";
 import { INITIAL_INVENTORY, INITIAL_PLACEMENTS } from "./model/catalog";
-import { cellsOf, findFirstFit, fits, resizeFit } from "./model/geometry";
-import type { GridSize, Inventory, ItemType, Placement } from "./model/types";
+import { findFirstFit, fits } from "./model/geometry";
 import { newPlacementId } from "./model/ids";
-import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
+import type { GridSize, ItemType } from "./model/types";
 import { useBoard } from "./useBoard";
+import { useCheckpoint } from "./useCheckpoint";
+import { useGlobalShortcuts } from "./useGlobalShortcuts";
+import { useGridConfig } from "./useGridConfig";
 import { useGridSizing } from "./useGridSizing";
 import { useItemTypes } from "./useItemTypes";
 import { useLayoutIO } from "./useLayoutIO";
@@ -27,15 +27,7 @@ import { useNotice } from "./useNotice";
 import { useOptimizer } from "./useOptimizer";
 import { useSelection } from "./useSelection";
 import { useThemeColors } from "./useThemeColors";
-import { Notice } from "./components/Notice";
-
-interface Checkpoint {
-  gridSize: GridSize;
-  placements: Placement[];
-  inventory: Inventory;
-  disabledCells: Set<string>;
-  itemTypes: ItemType[];
-}
+import { TWEAK_DEFAULTS, useTweaks } from "./useTweaks";
 
 export function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
@@ -48,7 +40,6 @@ export function App() {
   const [draggingFromTray, setDraggingFromTray] = useState<TrayDrag | null>(null);
   const [disabledCells, setDisabledCells] = useState<Set<string>>(new Set());
   const [newTypeOpen, setNewTypeOpen] = useState(false);
-  const [checkpoint, setCheckpoint] = useState<Checkpoint | null>(null);
 
   const gridW = gridSize.w,
     gridH = gridSize.h;
@@ -88,6 +79,30 @@ export function App() {
     confirmDeleteType,
   } = useItemTypes({ board, placements, gridW, gridH, disabledCells, clearSelection });
 
+  const { onSafeResizeW, onSafeResizeH, toggleDisabledCell } = useGridConfig({
+    placements,
+    typeById,
+    board,
+    gridW,
+    gridH,
+    setGridSize,
+    disabledCells,
+    setDisabledCells,
+  });
+
+  const { onSaveState, onRevert, canRevert } = useCheckpoint({
+    gridSize,
+    placements,
+    inventory,
+    disabledCells,
+    itemTypes,
+    setGridSize,
+    setDisabledCells,
+    setItemTypes,
+    board,
+    clearSelection,
+  });
+
   // Set the available stock (inventory count) for a type; lets the user restock
   // an object that's fully placed so they can create more instances of it.
   const onSetStock = useCallback(
@@ -119,50 +134,6 @@ export function App() {
     document.body.className = `theme-${t.theme}`;
   }, [t.theme]);
 
-  // Safe grid resize: compacts placements toward the shrinking edge so empty
-  // space on either side can be reclaimed; only blocks if the occupied span
-  // genuinely can't fit the requested size.
-  const onSafeResizeW = useCallback(
-    (newW: number) => {
-      const w = Math.max(2, Math.min(20, newW));
-      const res = resizeFit(placements, disabledCells, w, gridH, typeById);
-      if (!res) return;
-      board.setPlacements(res.placements);
-      setDisabledCells(res.disabled);
-      setGridSize(prev => ({ ...prev, w }));
-    },
-    [placements, disabledCells, gridH, typeById, board],
-  );
-
-  const onSafeResizeH = useCallback(
-    (newH: number) => {
-      const h = Math.max(2, Math.min(20, newH));
-      const res = resizeFit(placements, disabledCells, gridW, h, typeById);
-      if (!res) return;
-      board.setPlacements(res.placements);
-      setDisabledCells(res.disabled);
-      setGridSize(prev => ({ ...prev, h }));
-    },
-    [placements, disabledCells, gridW, typeById, board],
-  );
-
-  const toggleDisabledCell = useCallback(
-    (cx: number, cy: number) => {
-      const key = `${cx},${cy}`;
-      const occupied = placements.some(p =>
-        cellsOf(p, typeById).some(([x, y]) => x === cx && y === cy),
-      );
-      if (occupied) return;
-      setDisabledCells(prev => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-    },
-    [placements, typeById],
-  );
-
   const rotateSelection = useCallback(() => {
     if (selectedIds.length === 0) return;
     board.setPlacements(
@@ -183,29 +154,14 @@ export function App() {
     setSelectedIds([]);
   }, [selectedIds, board, setSelectedIds]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as Element;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-      if (e.key === "r" || e.key === "R") {
-        e.preventDefault();
-        if (draggingFromTray) {
-          setDraggingFromTray(d => (d ? { ...d, rot: ((d.rot ?? 0) + 90) % 360 } : d));
-        } else {
-          rotateSelection();
-        }
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        if (selectedTypeId) {
-          setDeleteTypeTarget(selectedTypeId);
-        } else {
-          deleteSelection();
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [rotateSelection, deleteSelection, draggingFromTray, selectedTypeId, setDeleteTypeTarget]);
+  useGlobalShortcuts({
+    draggingFromTray,
+    setDraggingFromTray,
+    rotateSelection,
+    deleteSelection,
+    selectedTypeId,
+    onDeleteType: setDeleteTypeTarget,
+  });
 
   const onTrayDragStart = (e: PointerEvent, type: ItemType) => {
     e.preventDefault();
@@ -261,25 +217,6 @@ export function App() {
     board,
     clearSelection,
   ]);
-
-  const onSaveState = useCallback(() => {
-    setCheckpoint({
-      gridSize,
-      placements: [...placements],
-      inventory: { ...inventory },
-      disabledCells: new Set(disabledCells),
-      itemTypes: [...itemTypes],
-    });
-  }, [gridSize, placements, inventory, disabledCells, itemTypes]);
-
-  const onRevert = useCallback(() => {
-    if (!checkpoint) return;
-    setGridSize(checkpoint.gridSize);
-    setDisabledCells(new Set(checkpoint.disabledCells));
-    setItemTypes(checkpoint.itemTypes);
-    board.applyBoard({ placements: checkpoint.placements, inventory: checkpoint.inventory });
-    clearSelection();
-  }, [checkpoint, board, clearSelection, setItemTypes]);
 
   const { fileInputRef, onImport, onImportFile, onExport } = useLayoutIO(
     {
@@ -355,50 +292,15 @@ export function App() {
         color: fg,
       }}
     >
-      {/* Header: logo + theme/viz toggles only */}
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          padding: "0 18px",
-          borderBottom: `1px solid ${border}`,
-          background: surface,
-          gap: 14,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 22,
-              height: 22,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gridTemplateRows: "1fr 1fr",
-              gap: 2,
-            }}
-          >
-            <div style={{ background: "oklch(0.78 0.12 195)", borderRadius: 1.5 }}></div>
-            <div style={{ background: "oklch(0.82 0.10 240)", borderRadius: 1.5 }}></div>
-            <div style={{ background: "oklch(0.86 0.16 110)", borderRadius: 1.5 }}></div>
-            <div style={{ background: "oklch(0.78 0.13 25)", borderRadius: 1.5 }}></div>
-          </div>
-          <div className="logo" style={{ color: fg }}>
-            <span className="l-name">Smart Storage</span>
-          </div>
-        </div>
-
-        <div style={{ flex: 1 }}></div>
-
-        <InlineTweaks t={t} setTweak={setTweak} theme={t.theme} />
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          onChange={onImportFile}
-          style={{ display: "none" }}
-        />
-      </header>
+      <AppHeader
+        t={t}
+        setTweak={setTweak}
+        fg={fg}
+        border={border}
+        surface={surface}
+        fileInputRef={fileInputRef}
+        onImportFile={onImportFile}
+      />
 
       {/* MAIN */}
       <main
@@ -564,7 +466,7 @@ export function App() {
             onNextLayout={onNextLayout}
             onSaveState={onSaveState}
             onRevert={onRevert}
-            canRevert={checkpoint !== null}
+            canRevert={canRevert}
             itemTypes={itemTypes}
             typeById={typeById}
             onUpdateType={onUpdateType}
@@ -579,37 +481,23 @@ export function App() {
         </aside>
       </main>
 
-      <NewTypeModal
-        open={newTypeOpen}
-        onClose={() => setNewTypeOpen(false)}
-        onCreate={onCreateType}
+      <AppModals
         theme={t.theme}
         itemTypes={itemTypes}
-      />
-      <DeleteTypeModal
-        open={!!deleteTypeTarget}
-        itemType={deleteTypeTarget ? (typeById[deleteTypeTarget] ?? null) : null}
-        placementCount={
-          deleteTypeTarget ? placements.filter(p => p.type === deleteTypeTarget).length : 0
-        }
-        onConfirm={confirmDeleteType}
-        onClose={() => setDeleteTypeTarget(null)}
-        theme={t.theme}
-      />
-      <ShapeEditorModal
-        open={!!shapeEditorTarget}
-        itemType={shapeEditorTarget}
-        onSave={cells => onSaveShape(shapeEditorTarget!.id, cells)}
-        onClose={() => setShapeEditorTarget(null)}
-        theme={t.theme}
-      />
-      <ShapeConflictModal
-        open={!!shapeConflict}
-        itemType={shapeConflict?.itemType}
-        conflictCount={shapeConflict?.conflicts.length || 0}
-        onRemoveConflicts={onResolveShapeConflict}
-        onClose={() => setShapeConflict(null)}
-        theme={t.theme}
+        typeById={typeById}
+        placements={placements}
+        newTypeOpen={newTypeOpen}
+        setNewTypeOpen={setNewTypeOpen}
+        onCreateType={onCreateType}
+        deleteTypeTarget={deleteTypeTarget}
+        setDeleteTypeTarget={setDeleteTypeTarget}
+        confirmDeleteType={confirmDeleteType}
+        shapeEditorTarget={shapeEditorTarget}
+        setShapeEditorTarget={setShapeEditorTarget}
+        onSaveShape={onSaveShape}
+        shapeConflict={shapeConflict}
+        setShapeConflict={setShapeConflict}
+        onResolveShapeConflict={onResolveShapeConflict}
       />
       <Notice notice={notice} theme={t.theme} onDismiss={dismiss} />
     </div>
