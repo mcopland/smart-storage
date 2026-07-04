@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
+use crate::error::EngineError;
 use crate::model::{cells_of, ItemType, Layout};
 
 /// One adjacency contribution as seen by a single item. Serializes to the
@@ -52,15 +53,13 @@ pub fn tag_synergy(from: &ItemType, to: &ItemType) -> i32 {
 /// Uses an occupancy grid instead of all-pairs adjacent() checks so the cost
 /// is O(total cells) rather than O(n^2 * cells).
 ///
-/// Panics if a placement references an unknown item type (see
+/// Errors if a placement references an unknown item type (see
 /// [`crate::model::cells_of`]).
-pub fn calc_score(layout: &Layout) -> ScoreResult {
+pub fn calc_score(layout: &Layout) -> Result<ScoreResult, EngineError> {
     let types = layout.types_by_id();
-    let mut per_item: HashMap<String, PerItem> = layout
-        .placements
-        .iter()
-        .map(|p| (p.id.clone(), PerItem::default()))
-        .collect();
+    // Indexed by placement position, so per-item lookups are infallible; the
+    // id-keyed map the UI consumes is built at the end.
+    let mut per_item: Vec<PerItem> = vec![PerItem::default(); layout.placements.len()];
 
     // Compute each placement's cells once, building a reusable cell list and a
     // cell-to-index map in a single pass.
@@ -68,7 +67,7 @@ pub fn calc_score(layout: &Layout) -> ScoreResult {
         .placements
         .iter()
         .map(|p| cells_of(p, &types))
-        .collect();
+        .collect::<Result<_, _>>()?;
     let mut cell_to_idx: HashMap<(i32, i32), usize> = HashMap::new();
     for (i, cells) in all_cells.iter().enumerate() {
         for &cell in cells {
@@ -98,20 +97,14 @@ pub fn calc_score(layout: &Layout) -> ScoreResult {
                 let tb = types[b.type_id.as_str()];
                 let da = tag_synergy(ta, tb);
                 let db = tag_synergy(tb, ta);
-                let entry_a = per_item.get_mut(&a.id).unwrap_or_else(|| {
-                    panic!("calc_score: missing per-item entry for \"{}\"", a.id)
-                });
-                entry_a.bonus += da;
-                entry_a.neighbors.push(Neighbor {
+                per_item[ai].bonus += da;
+                per_item[ai].neighbors.push(Neighbor {
                     id: b.id.clone(),
                     type_id: b.type_id.clone(),
                     delta: da,
                 });
-                let entry_b = per_item.get_mut(&b.id).unwrap_or_else(|| {
-                    panic!("calc_score: missing per-item entry for \"{}\"", b.id)
-                });
-                entry_b.bonus += db;
-                entry_b.neighbors.push(Neighbor {
+                per_item[bi].bonus += db;
+                per_item[bi].neighbors.push(Neighbor {
                     id: a.id.clone(),
                     type_id: a.type_id.clone(),
                     delta: db,
@@ -121,11 +114,45 @@ pub fn calc_score(layout: &Layout) -> ScoreResult {
     }
 
     let mut total = 0;
-    for item in per_item.values_mut() {
+    let mut by_id: HashMap<String, PerItem> = HashMap::with_capacity(per_item.len());
+    for (p, mut item) in layout.placements.iter().zip(per_item) {
         // total equals bonus today; it exists as an extension point for future
         // base scores or per-item penalty terms.
         item.total = item.bonus;
         total += item.total;
+        by_id.insert(p.id.clone(), item);
     }
-    ScoreResult { total, per_item }
+    Ok(ScoreResult {
+        total,
+        per_item: by_id,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Layout, Placement};
+
+    #[test]
+    fn calc_score_errors_on_unknown_type() {
+        let layout = Layout {
+            item_types: vec![],
+            grid_w: 3,
+            grid_h: 3,
+            disabled_cells: vec![],
+            placements: vec![Placement {
+                id: "p1".to_string(),
+                type_id: "ghost".to_string(),
+                x: 0,
+                y: 0,
+                rot: 0,
+            }],
+        };
+        let err = calc_score(&layout).expect_err("unknown type must be an error, not a panic");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("ghost") && msg.contains("p1"),
+            "error must name the type and placement, got: {msg}"
+        );
+    }
 }

@@ -351,6 +351,7 @@ impl OptimizerSession {
             cap_sum / 2
         };
 
+        let initial_score = calc_score(layout).map_err(|e| e.to_string())?.total;
         let mut session = OptimizerSession {
             grid_w: layout.grid_w,
             grid_h: layout.grid_h,
@@ -364,7 +365,7 @@ impl OptimizerSession {
             occ: vec![None; size],
             disabled,
             cur: cur.clone(),
-            cur_score: calc_score(layout).total,
+            cur_score: initial_score,
             best: cur,
             best_score: 0,
             rng: SmallRng::seed_from_u64(seed as u64),
@@ -504,7 +505,7 @@ impl OptimizerSession {
         }
 
         self.cur = new_cur;
-        self.cur_score = calc_score(layout).total;
+        self.cur_score = calc_score(layout).map_err(|e| e.to_string())?.total;
 
         // Record the new position in the visited set (adjacency fp) and update
         // best/best_layouts (composition fp computed inside record_best).
@@ -1270,7 +1271,9 @@ mod tests {
                 disabled_cells: vec![],
                 placements: group.clone(),
             };
-            let s = crate::score::calc_score(&test_layout).total;
+            let s = crate::score::calc_score(&test_layout)
+                .expect("tied layout must score")
+                .total;
             assert_eq!(
                 s, best_score,
                 "tied layout re-scored to {s}, expected {best_score}"
