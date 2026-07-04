@@ -9,7 +9,50 @@ use crate::anneal::OptimizerSession;
 use crate::model::Layout;
 use crate::score::calc_score;
 
-#[wasm_bindgen]
+/// TypeScript declarations for the plain objects crossing the boundary.
+/// These must mirror the serde shapes: `model::Placement` and the camelCase
+/// serializations of `score::ScoreResult` and `anneal::Progress`.
+#[wasm_bindgen(typescript_custom_section)]
+const ENGINE_TYPES: &'static str = r#"
+export interface EnginePlacement {
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  rot: number;
+}
+
+export interface EngineNeighbor {
+  id: string;
+  type: string;
+  delta: number;
+}
+
+export interface EnginePerItem {
+  bonus: number;
+  total: number;
+  neighbors: EngineNeighbor[];
+}
+
+export interface EngineScoreResult {
+  total: number;
+  perItem: Record<string, EnginePerItem>;
+}
+
+export interface EngineProgress {
+  placements: EnginePlacement[];
+  score: number;
+  done: boolean;
+  itersDone: number;
+  explored: number;
+  stalled: boolean;
+  bestLayoutCount: number;
+  upperBound: number;
+  provablyOptimal: boolean;
+}
+"#;
+
+#[wasm_bindgen(unchecked_return_type = "EngineScoreResult")]
 pub fn score(layout: JsValue) -> Result<JsValue, JsValue> {
     let layout: Layout = serde_wasm_bindgen::from_value(layout)
         .map_err(|e| JsValue::from_str(&format!("score: failed to parse layout: {e}")))?;
@@ -36,8 +79,8 @@ impl Optimizer {
         Ok(Optimizer { session })
     }
 
-    /// Run up to `n` more iterations; returns
-    /// `{ placements, score, done, itersDone, explored, stalled }`.
+    /// Run up to `n` more iterations; returns an `EngineProgress` snapshot.
+    #[wasm_bindgen(unchecked_return_type = "EngineProgress")]
     pub fn step(&mut self, n: u32) -> Result<JsValue, JsValue> {
         self.session
             .step(n)
@@ -66,7 +109,8 @@ impl Optimizer {
     }
 
     /// Return all distinct layouts that tie the current best score as an array
-    /// of placement arrays: `[[{id, type, x, y, rot}, ...], ...]`.
+    /// of placement arrays.
+    #[wasm_bindgen(unchecked_return_type = "EnginePlacement[][]")]
     pub fn best_layouts(&self) -> Result<JsValue, JsValue> {
         self.session
             .best_layouts()

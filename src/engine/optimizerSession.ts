@@ -1,23 +1,11 @@
-import { Optimizer } from "../../crates/engine/pkg/engine";
+import { Optimizer, type EngineProgress } from "../../crates/engine/pkg/engine";
 import type { Placement } from "../model/types";
 import type { EngineLayout } from "./wasm";
 
-export interface OptimizerProgress {
-  // Best layout found so far (not the current annealing state).
-  placements: Placement[];
-  score: number;
-  done: boolean;
-  itersDone: number;
-  // Distinct layouts evaluated across all runs in this session.
-  explored: number;
-  // True when the most recently completed run found zero new layouts.
-  stalled: boolean;
-  // Number of distinct tied-best layouts collected so far.
-  bestLayoutCount: number;
-  // Provable upper bound on the achievable score, computed at session construction.
-  upperBound: number;
-  // True when score equals upperBound: the best found score is provably optimal.
-  provablyOptimal: boolean;
+// The wasm-bindgen boundary types (EngineProgress, EnginePlacement) are
+// declared in crates/engine/src/wasm.rs and emitted into pkg/engine.d.ts, so
+// the Rust serde shapes and these TS types share one source of truth.
+export interface OptimizerProgress extends EngineProgress {
   // Only present in the terminal message (done: true). All distinct layouts
   // that tie the best score, for the Prev/Next browser.
   bestLayouts?: Placement[][];
@@ -39,5 +27,5 @@ export function createOptimizerSession(
   seed: number,
   totalIters: number,
 ): OptimizerSession {
-  return new Optimizer(layout, seed, totalIters) as unknown as OptimizerSession;
+  return new Optimizer(layout, seed, totalIters);
 }
