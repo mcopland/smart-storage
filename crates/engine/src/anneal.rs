@@ -25,7 +25,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 
-use crate::model::{rotate_cells, Cell, Layout, Placement};
+use crate::model::{rotate_cells, Cell, ItemType, Layout, Placement};
 use crate::score::{calc_score, tag_synergy};
 
 const T_START: f64 = 3.0;
@@ -220,6 +220,106 @@ fn composition_fp(
     h
 }
 
+/// Shape cells per type per 90-degree rotation step, normalized to origin.
+fn build_rotations(item_types: &[ItemType]) -> Vec<[Vec<Cell>; 4]> {
+    item_types
+        .iter()
+        .map(|t| {
+            [
+                rotate_cells(&t.cells, 0),
+                rotate_cells(&t.cells, 90),
+                rotate_cells(&t.cells, 180),
+                rotate_cells(&t.cells, 270),
+            ]
+        })
+        .collect()
+}
+
+/// Pairwise synergy matrices: `syn2[a][b]` is the symmetric per-edge score
+/// (both directions summed); `syn_dir[a][b]` is the directed score type `a`
+/// gains per adjacent neighbor of type `b`.
+fn build_synergy_matrices(item_types: &[ItemType]) -> (Vec<Vec<i32>>, Vec<Vec<i32>>) {
+    let n_types = item_types.len();
+    let syn_dir: Vec<Vec<i32>> = (0..n_types)
+        .map(|a| {
+            (0..n_types)
+                .map(|b| tag_synergy(&item_types[a], &item_types[b]))
+                .collect()
+        })
+        .collect();
+    let syn2: Vec<Vec<i32>> = (0..n_types)
+        .map(|a| {
+            (0..n_types)
+                .map(|b| syn_dir[a][b] + syn_dir[b][a])
+                .collect()
+        })
+        .collect();
+    (syn2, syn_dir)
+}
+
+/// Parse `"x,y"` disabled-cell keys into a row-major mask. Malformed keys are
+/// an error; keys outside the grid are silently ignored (the UI can hold
+/// disabled cells that a shrink pushed out of range).
+fn parse_disabled_cells(keys: &[String], grid_w: i32, grid_h: i32) -> Result<Vec<bool>, String> {
+    let mut disabled = vec![false; (grid_w * grid_h) as usize];
+    for key in keys {
+        let (x, y) = key
+            .split_once(',')
+            .and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?)))
+            .ok_or_else(|| format!("optimizer: malformed disabled cell key \"{key}\""))?;
+        if x >= 0 && y >= 0 && x < grid_w && y < grid_h {
+            disabled[(y * grid_w + x) as usize] = true;
+        }
+    }
+    Ok(disabled)
+}
+
+/// Per-type shape perimeter: number of exposed boundary edges (each can touch
+/// a distinct neighbor item). Used in the upper-bound calculation.
+fn shape_perimeters(item_types: &[ItemType]) -> Vec<usize> {
+    item_types
+        .iter()
+        .map(|t| {
+            let cells: HashSet<(i32, i32)> = t.cells.iter().copied().collect();
+            t.cells
+                .iter()
+                .map(|&(cx, cy)| {
+                    [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)]
+                        .iter()
+                        .filter(|&&n| !cells.contains(&n))
+                        .count()
+                })
+                .sum()
+        })
+        .collect()
+}
+
+/// Per-item degree relaxation: for each item, sum its best
+/// min(perimeter, n-1) positive undirected neighbor weights. Halve the
+/// sum because each edge contributes to both endpoints. The result is a
+/// valid over-estimate: it ignores geometric feasibility and the mutual
+/// constraint that each edge requires agreement from both sides.
+fn compute_upper_bound(item_type: &[usize], perimeters: &[usize], syn2: &[Vec<i32>]) -> i32 {
+    let n_items = item_type.len();
+    if n_items < 2 {
+        return 0;
+    }
+    let mut cap_sum = 0i32;
+    for i in 0..n_items {
+        let ti = item_type[i];
+        let k = perimeters[ti].min(n_items - 1);
+        let mut weights: Vec<i32> = (0..n_items)
+            .filter(|&j| j != i)
+            .map(|j| syn2[ti][item_type[j]])
+            .filter(|&w| w > 0)
+            .collect();
+        weights.sort_unstable_by(|a, b| b.cmp(a));
+        weights.truncate(k);
+        cap_sum += weights.iter().sum::<i32>();
+    }
+    cap_sum / 2
+}
+
 impl OptimizerSession {
     pub fn new(layout: &Layout, seed: u32, total_iters: u32) -> Result<Self, String> {
         if layout.grid_w <= 0 || layout.grid_h <= 0 {
@@ -228,7 +328,6 @@ impl OptimizerSession {
                 layout.grid_w, layout.grid_h
             ));
         }
-        let n_types = layout.item_types.len();
         let type_index: std::collections::HashMap<&str, usize> = layout
             .item_types
             .iter()
@@ -236,37 +335,8 @@ impl OptimizerSession {
             .map(|(i, t)| (t.id.as_str(), i))
             .collect();
 
-        let rotations: Vec<[Vec<Cell>; 4]> = layout
-            .item_types
-            .iter()
-            .map(|t| {
-                [
-                    rotate_cells(&t.cells, 0),
-                    rotate_cells(&t.cells, 90),
-                    rotate_cells(&t.cells, 180),
-                    rotate_cells(&t.cells, 270),
-                ]
-            })
-            .collect();
-
-        let syn2: Vec<Vec<i32>> = (0..n_types)
-            .map(|a| {
-                (0..n_types)
-                    .map(|b| {
-                        tag_synergy(&layout.item_types[a], &layout.item_types[b])
-                            + tag_synergy(&layout.item_types[b], &layout.item_types[a])
-                    })
-                    .collect()
-            })
-            .collect();
-
-        let syn_dir: Vec<Vec<i32>> = (0..n_types)
-            .map(|a| {
-                (0..n_types)
-                    .map(|b| tag_synergy(&layout.item_types[a], &layout.item_types[b]))
-                    .collect()
-            })
-            .collect();
+        let rotations = build_rotations(&layout.item_types);
+        let (syn2, syn_dir) = build_synergy_matrices(&layout.item_types);
 
         let mut ids = Vec::with_capacity(layout.placements.len());
         let mut type_ids = Vec::with_capacity(layout.placements.len());
@@ -296,60 +366,10 @@ impl OptimizerSession {
         }
 
         let size = (layout.grid_w * layout.grid_h) as usize;
-        let mut disabled = vec![false; size];
-        for key in &layout.disabled_cells {
-            let (x, y) = key
-                .split_once(',')
-                .and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?)))
-                .ok_or_else(|| format!("optimizer: malformed disabled cell key \"{key}\""))?;
-            if x >= 0 && y >= 0 && x < layout.grid_w && y < layout.grid_h {
-                disabled[(y * layout.grid_w + x) as usize] = true;
-            }
-        }
+        let disabled = parse_disabled_cells(&layout.disabled_cells, layout.grid_w, layout.grid_h)?;
 
-        // Per-type shape perimeter: number of exposed boundary edges (each can
-        // touch a distinct neighbor item). Used in the upper-bound calculation.
-        let perimeters: Vec<usize> = layout
-            .item_types
-            .iter()
-            .map(|t| {
-                let cells: HashSet<(i32, i32)> = t.cells.iter().copied().collect();
-                t.cells
-                    .iter()
-                    .map(|&(cx, cy)| {
-                        [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)]
-                            .iter()
-                            .filter(|&&n| !cells.contains(&n))
-                            .count()
-                    })
-                    .sum()
-            })
-            .collect();
-
-        // Per-item degree relaxation: for each item, sum its best
-        // min(perimeter, n-1) positive undirected neighbor weights. Halve the
-        // sum because each edge contributes to both endpoints. The result is a
-        // valid over-estimate: it ignores geometric feasibility and the mutual
-        // constraint that each edge requires agreement from both sides.
-        let n_items = item_type.len();
-        let upper_bound: i32 = if n_items < 2 {
-            0
-        } else {
-            let mut cap_sum = 0i32;
-            for i in 0..n_items {
-                let ti = item_type[i];
-                let k = perimeters[ti].min(n_items - 1);
-                let mut weights: Vec<i32> = (0..n_items)
-                    .filter(|&j| j != i)
-                    .map(|j| syn2[ti][item_type[j]])
-                    .filter(|&w| w > 0)
-                    .collect();
-                weights.sort_unstable_by(|a, b| b.cmp(a));
-                weights.truncate(k);
-                cap_sum += weights.iter().sum::<i32>();
-            }
-            cap_sum / 2
-        };
+        let perimeters = shape_perimeters(&layout.item_types);
+        let upper_bound = compute_upper_bound(&item_type, &perimeters, &syn2);
 
         let initial_score = calc_score(layout).map_err(|e| e.to_string())?.total;
         let mut session = OptimizerSession {
@@ -883,7 +903,105 @@ impl OptimizerSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ItemType, Layout, Placement};
+    use crate::model::{ItemType, Layout, Placement, Synergy};
+
+    fn shape(id: &str, cells: Vec<Cell>) -> ItemType {
+        ItemType {
+            id: id.to_string(),
+            tags: vec![],
+            synergies: vec![],
+            cells,
+        }
+    }
+
+    // --- constructor helpers ---
+
+    #[test]
+    fn build_rotations_matches_rotate_cells() {
+        let l = shape("L", vec![(0, 0), (0, 1), (1, 1)]);
+        let rots = build_rotations(std::slice::from_ref(&l));
+        for (i, rot) in [0, 90, 180, 270].into_iter().enumerate() {
+            assert_eq!(rots[0][i], rotate_cells(&l.cells, rot), "rotation {rot}");
+        }
+    }
+
+    #[test]
+    fn build_synergy_matrices_directed_and_symmetric_agree() {
+        // a gains +1 next to b (rule on tag "x"); b loses 1 next to a
+        // (negative rule on tag "y").
+        let mut a = shape("a", vec![(0, 0)]);
+        a.tags = vec!["y".to_string()];
+        a.synergies = vec![Synergy {
+            tag: "x".to_string(),
+            positive: None,
+        }];
+        let mut b = shape("b", vec![(0, 0)]);
+        b.tags = vec!["x".to_string()];
+        b.synergies = vec![Synergy {
+            tag: "y".to_string(),
+            positive: Some(false),
+        }];
+        let types = vec![a, b];
+        let (syn2, syn_dir) = build_synergy_matrices(&types);
+        assert_eq!(syn_dir[0][1], 1, "a gains from b");
+        assert_eq!(syn_dir[1][0], -1, "b loses from a");
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_eq!(
+                    syn2[i][j],
+                    syn_dir[i][j] + syn_dir[j][i],
+                    "syn2 must be the symmetrized sum ({i},{j})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parse_disabled_cells_sets_only_in_range_keys() {
+        let keys = vec!["1,0".to_string(), "9,9".to_string(), "-1,0".to_string()];
+        // Out-of-range keys are ignored (matching the constructor's historical
+        // leniency); only in-range cells set their mask bit.
+        let disabled = parse_disabled_cells(&keys, 3, 2).expect("well-formed keys must parse");
+        let mut expected = vec![false; 6];
+        expected[1] = true;
+        assert_eq!(disabled, expected);
+    }
+
+    #[test]
+    fn parse_disabled_cells_rejects_malformed_keys() {
+        let err = parse_disabled_cells(&["nope".to_string()], 3, 3)
+            .expect_err("a malformed key must error");
+        assert!(
+            err.contains("nope"),
+            "error should name the key, got: {err}"
+        );
+    }
+
+    #[test]
+    fn shape_perimeters_counts_exposed_edges() {
+        let types = vec![
+            shape("single", vec![(0, 0)]),
+            shape("domino", vec![(0, 0), (1, 0)]),
+            shape("square", vec![(0, 0), (1, 0), (0, 1), (1, 1)]),
+        ];
+        assert_eq!(shape_perimeters(&types), vec![4, 6, 8]);
+    }
+
+    #[test]
+    fn upper_bound_zero_for_fewer_than_two_items() {
+        let syn2 = vec![vec![0]];
+        assert_eq!(compute_upper_bound(&[], &[4], &syn2), 0);
+        assert_eq!(compute_upper_bound(&[0], &[4], &syn2), 0);
+    }
+
+    #[test]
+    fn upper_bound_halves_the_per_item_cap_sum() {
+        // Two items of different types with a mutual +2 undirected weight:
+        // each item caps at min(perimeter=4, n-1=1) = 1 neighbor, so
+        // cap_sum = 2 + 2 = 4 and the bound is 4 / 2 = 2.
+        let syn2 = vec![vec![0, 2], vec![2, 0]];
+        assert_eq!(compute_upper_bound(&[0, 1], &[4, 4], &syn2), 2);
+    }
 
     fn dot_layout(grid_w: i32, grid_h: i32, n: usize) -> Layout {
         let item_types = vec![ItemType {
