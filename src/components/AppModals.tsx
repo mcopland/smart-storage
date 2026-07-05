@@ -44,13 +44,14 @@ export function AppModals({
 }) {
   return (
     <>
-      <NewTypeModal
-        open={newTypeOpen}
-        onClose={() => setNewTypeOpen(false)}
-        onCreate={onCreateType}
-        theme={theme}
-        itemTypes={itemTypes}
-      />
+      {newTypeOpen && (
+        <NewTypeModal
+          onClose={() => setNewTypeOpen(false)}
+          onCreate={onCreateType}
+          theme={theme}
+          itemTypes={itemTypes}
+        />
+      )}
       <DeleteTypeModal
         open={!!deleteTypeTarget}
         itemType={deleteTypeTarget ? (typeById[deleteTypeTarget] ?? null) : null}
@@ -61,13 +62,14 @@ export function AppModals({
         onClose={() => setDeleteTypeTarget(null)}
         theme={theme}
       />
-      <ShapeEditorModal
-        open={!!shapeEditorTarget}
-        itemType={shapeEditorTarget}
-        onSave={cells => onSaveShape(shapeEditorTarget!.id, cells)}
-        onClose={() => setShapeEditorTarget(null)}
-        theme={theme}
-      />
+      {shapeEditorTarget && (
+        <ShapeEditorModal
+          itemType={shapeEditorTarget}
+          onSave={cells => onSaveShape(shapeEditorTarget.id, cells)}
+          onClose={() => setShapeEditorTarget(null)}
+          theme={theme}
+        />
+      )}
       <ShapeConflictModal
         open={!!shapeConflict}
         itemType={shapeConflict?.itemType}

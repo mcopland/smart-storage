@@ -37,13 +37,14 @@ function KeyIcon({
   );
 }
 
+function Plus({ color }: { color: string }) {
+  return <span style={{ margin: "0 4px", color, font: "11px/1 Inter, sans-serif" }}>+</span>;
+}
+
 // Footer shortcuts
 export function ShortcutsRow({ theme }: { theme: string }) {
   const isWarm = theme === "warm";
   const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
-  const Plus = () => (
-    <span style={{ margin: "0 4px", color: fgDim, font: "11px/1 Inter, sans-serif" }}>+</span>
-  );
   const items = [
     { keys: <KeyIcon theme={theme}>R</KeyIcon>, label: "rotate" },
     {
@@ -52,7 +53,7 @@ export function ShortcutsRow({ theme }: { theme: string }) {
           <KeyIcon theme={theme} large>
             {KEY_OPTION}
           </KeyIcon>
-          <Plus />
+          <Plus color={fgDim} />
           <KeyIcon theme={theme} wide>
             click
           </KeyIcon>
@@ -66,7 +67,7 @@ export function ShortcutsRow({ theme }: { theme: string }) {
           <KeyIcon theme={theme} large>
             {KEY_SHIFT}
           </KeyIcon>
-          <Plus />
+          <Plus color={fgDim} />
           <KeyIcon theme={theme} wide>
             drag
           </KeyIcon>
