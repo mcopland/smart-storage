@@ -175,6 +175,7 @@ export function GridSurface({
           score={scoreData?.perItem[p.id]?.total}
           vizMode={vizMode}
           onPointerDown={drag.onItemPointerDown}
+          onKeyActivate={pl => setSelectedIds(selectedIds.includes(pl.id) ? [] : [pl.id])}
           onHoverEnter={pl => onHoverPlacement && onHoverPlacement(pl.id)}
           onHoverLeave={() => onHoverPlacement && onHoverPlacement(null)}
           theme={theme}

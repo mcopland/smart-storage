@@ -170,8 +170,19 @@ export function ScorePanel({
                 return (
                   <div
                     key={id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Edit ${info.name}`}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (onSelectType) onSelectType(id);
+                      }
+                    }}
                     onPointerEnter={() => onHoverTypeId && onHoverTypeId(id)}
                     onPointerLeave={() => onHoverTypeId && onHoverTypeId(null)}
+                    onFocus={() => onHoverTypeId && onHoverTypeId(id)}
+                    onBlur={() => onHoverTypeId && onHoverTypeId(null)}
                     onClick={() => onSelectType && onSelectType(id)}
                     title={`Edit ${info.name}`}
                     style={{
