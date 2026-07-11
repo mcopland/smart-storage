@@ -13,15 +13,15 @@ function getComboName(combo: Combo | null): string {
 }
 
 export interface NewTypeModalProps {
-  open: boolean;
   onClose: () => void;
   onCreate: (newType: ItemType, count: number) => void;
   theme: string;
   itemTypes: ItemType[];
 }
 
-// New Object modal (simplified, auto-assigns combo)
-export function NewTypeModal({ open, onClose, onCreate, theme, itemTypes }: NewTypeModalProps) {
+// New Object modal (simplified, auto-assigns combo). Mounted only while
+// open, so the form state seeds once per opening via lazy initializers.
+export function NewTypeModal({ onClose, onCreate, theme, itemTypes }: NewTypeModalProps) {
   const isWarm = theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
   const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
@@ -30,26 +30,17 @@ export function NewTypeModal({ open, onClose, onCreate, theme, itemTypes }: NewT
   const surface = isWarm ? "#fbf8f0" : "#141a23";
   const inputBg = isWarm ? "rgba(255,253,247,0.6)" : "rgba(255,255,255,0.03)";
 
-  const [name, setName] = useState("");
+  const [assignedCombo] = useState<Combo | null>(() => getNextAvailableCombo(itemTypes));
+  const [name, setName] = useState(() => (assignedCombo ? getComboName(assignedCombo) : ""));
   const [count, setCount] = useState("1");
-  const [assignedCombo, setAssignedCombo] = useState<Combo | null>(null);
-  const [cells, setCells] = useState<Cell[]>([]);
+  const [cells, setCells] = useState<Cell[]>(() => assignedCombo?.cells ?? []);
 
+  // Every color x glyph combo is taken: nothing to create, close instead.
   useEffect(() => {
-    if (open) {
-      const combo = getNextAvailableCombo(itemTypes);
-      if (!combo) {
-        onClose();
-        return;
-      }
-      setAssignedCombo(combo);
-      setCells(combo.cells);
-      setName(getComboName(combo));
-      setCount("1");
-    }
-  }, [open, onClose, itemTypes]);
+    if (!assignedCombo) onClose();
+  }, [assignedCombo, onClose]);
 
-  if (!open) return null;
+  if (!assignedCombo) return null;
 
   const inputStyle: CSSProperties = {
     width: "100%",
@@ -70,7 +61,7 @@ export function NewTypeModal({ open, onClose, onCreate, theme, itemTypes }: NewT
   };
 
   const submit = () => {
-    if (!assignedCombo || cells.length === 0) return;
+    if (cells.length === 0) return;
     const id =
       (name.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "type_")
       + Date.now().toString(36).slice(-3);
@@ -144,9 +135,9 @@ export function NewTypeModal({ open, onClose, onCreate, theme, itemTypes }: NewT
           <ShapePaintGrid
             cells={cells}
             onChange={setCells}
-            color={assignedCombo?.color || "transparent"}
+            color={assignedCombo.color}
             theme={theme}
-            active={open}
+            active
           />
           <div
             style={{

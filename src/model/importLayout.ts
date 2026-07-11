@@ -125,7 +125,7 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
     raw = JSON.parse(text);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(`import failed: file is not valid JSON: ${detail}`);
+    throw new Error(`import failed: file is not valid JSON: ${detail}`, { cause: err });
   }
   if (!isRecord(raw)) {
     throw new Error("import failed: file must contain a JSON object at the top level");

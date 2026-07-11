@@ -65,16 +65,11 @@ export function useOptimizer({
   const onProgressRef = useRef(onProgress);
   const onStartRef = useRef(onStart);
   const onErrorRef = useRef(onError);
-  onProgressRef.current = onProgress;
-  onStartRef.current = onStart;
-  onErrorRef.current = onError;
 
   // Refs that mirror state values so stable callbacks (Prev/Next) can read
   // the latest values without depending on them.
   const bestLayoutsRef = useRef<Placement[][]>([]);
   const layoutIndexRef = useRef(0);
-  bestLayoutsRef.current = bestLayouts;
-  layoutIndexRef.current = layoutIndex;
 
   const clientRef = useRef<OptimizerClient | null>(null);
   // The board signature at the time of the last init call.
@@ -83,7 +78,18 @@ export function useOptimizer({
   const initializedRef = useRef(false);
   // Guard: don't reseat while a run is in progress (the worker is moving pieces).
   const optimizingRef = useRef(false);
-  optimizingRef.current = optimizing;
+
+  // Mirror the latest values after every commit. Declared before the
+  // board-sync effect below so its reads of optimizingRef are fresh; all
+  // other consumers are event or worker callbacks, which run later anyway.
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+    onStartRef.current = onStart;
+    onErrorRef.current = onError;
+    bestLayoutsRef.current = bestLayouts;
+    layoutIndexRef.current = layoutIndex;
+    optimizingRef.current = optimizing;
+  });
 
   // Create the persistent worker once; destroy on unmount.
   useEffect(() => {

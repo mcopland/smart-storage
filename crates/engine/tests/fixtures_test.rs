@@ -76,7 +76,10 @@ fn fits_matches_fixtures() {
     let fixture: FitsFixture = load("fits.json");
     for (i, case) in fixture.cases.iter().enumerate() {
         assert_eq!(
-            fixture.layout.fits(&case.placement, Some(&case.ignore_id)),
+            fixture
+                .layout
+                .fits(&case.placement, Some(&case.ignore_id))
+                .expect("fixture layouts reference only known types"),
             case.expected,
             "fits case {i}: {} at ({}, {}) rot {}",
             case.placement.type_id,
@@ -159,7 +162,8 @@ struct ExpectedNeighbor {
 
 fn assert_score_fixture(name: &str) {
     let fixture: ScoreFixture = load(name);
-    let result = calc_score(&fixture.layout);
+    let result = calc_score(&fixture.layout)
+        .unwrap_or_else(|e| panic!("{name}: fixture layout must score: {e}"));
     assert_eq!(result.total, fixture.expected.total, "{name}: total");
     assert_eq!(
         result.per_item.len(),

@@ -136,11 +136,27 @@ export function Tray({
             <div
               key={tt.id}
               data-tray-item={tt.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`${tt.name}, ${count} in stock`}
+              aria-pressed={isSel}
+              onKeyDown={e => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelectType(tt.id);
+                }
+              }}
               onPointerDown={e => startInteract(e, tt, !disabled)}
               onPointerEnter={() => {
                 if (onHoverTypeId) onHoverTypeId(tt.id);
               }}
               onPointerLeave={() => {
+                if (onHoverTypeId) onHoverTypeId(null);
+              }}
+              onFocus={() => {
+                if (onHoverTypeId) onHoverTypeId(tt.id);
+              }}
+              onBlur={() => {
                 if (onHoverTypeId) onHoverTypeId(null);
               }}
               title={`${tt.name} ${U_DASH} ${numCells} cells${tt.tags && tt.tags.length ? ` ${U_DOT} ${tt.tags.join(", ")}` : ""}${disabled ? ` ${U_DOT} out of stock (click to edit / restock)` : ""}`}

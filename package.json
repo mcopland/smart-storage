@@ -9,19 +9,24 @@
     "build": "npm run build:wasm && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "npm run build:wasm && vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.3",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.8.4",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.8"
   }

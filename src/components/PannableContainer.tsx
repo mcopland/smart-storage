@@ -28,6 +28,14 @@ export function PannableContainer({
 
   const isZoomed = zoom > 100;
 
+  // Reset pan when zoom drops to 100% or below, adjusted during render (the
+  // sanctioned "derive state from props" pattern) rather than in an effect.
+  const [prevZoomed, setPrevZoomed] = useState(isZoomed);
+  if (prevZoomed !== isZoomed) {
+    setPrevZoomed(isZoomed);
+    if (!isZoomed) setPan({ x: 0, y: 0 });
+  }
+
   const onWheel = useCallback(
     (e: React.WheelEvent) => {
       if (!isZoomed) return;
@@ -142,13 +150,6 @@ export function PannableContainer({
       window.removeEventListener("keyup", onKeyUp);
     };
   }, []);
-
-  // Reset pan when zoom changes to 100% or below
-  useEffect(() => {
-    if (!isZoomed) {
-      setPan({ x: 0, y: 0 });
-    }
-  }, [isZoomed]);
 
   const isWarm = theme === "warm";
 
