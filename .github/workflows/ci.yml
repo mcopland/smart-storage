@@ -49,6 +49,7 @@ jobs:
       - run: npm ci
       - run: npm run build:wasm
       - run: npx prettier --check .
+      - run: npm run lint
       - run: npx tsc --noEmit
       - run: npx vitest run
       - run: npx vite build

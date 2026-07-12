@@ -11,6 +11,8 @@ export interface PlacedItemProps {
   score?: number;
   vizMode: string;
   onPointerDown: (e: React.PointerEvent, p: Placement) => void;
+  // Keyboard activation (Enter/Space on the focused shape): toggle selection.
+  onKeyActivate?: (p: Placement) => void;
   onHoverEnter?: (p: Placement) => void;
   onHoverLeave?: () => void;
   theme: string;
@@ -30,6 +32,7 @@ export function PlacedItem({
   score,
   vizMode,
   onPointerDown,
+  onKeyActivate,
   onHoverEnter,
   onHoverLeave,
   theme,
@@ -119,9 +122,21 @@ export function PlacedItem({
           stroke={borderCol}
           strokeWidth={1}
           strokeLinejoin="round"
+          role="button"
+          tabIndex={0}
+          aria-label={`${t.name} at ${p.x},${p.y}`}
+          aria-pressed={selected}
+          onKeyDown={e => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              if (onKeyActivate) onKeyActivate(p);
+            }
+          }}
           onPointerDown={e => onPointerDown(e, p)}
           onPointerEnter={() => onHoverEnter && onHoverEnter(p)}
           onPointerLeave={() => onHoverLeave && onHoverLeave()}
+          onFocus={() => onHoverEnter && onHoverEnter(p)}
+          onBlur={() => onHoverLeave && onHoverLeave()}
           style={{ pointerEvents: "auto", cursor: "grab" }}
         >
           <title>{t.name}</title>

@@ -42,12 +42,16 @@ fn final_placements_are_legal_and_score_is_consistent() {
         };
         for p in &final_layout.placements {
             assert!(
-                final_layout.fits(p, Some(&p.id)),
+                final_layout
+                    .fits(p, Some(&p.id))
+                    .expect("final layout references only known types"),
                 "{name}: optimizer produced an illegal placement: {p:?}"
             );
         }
         assert_eq!(
-            calc_score(&final_layout).total,
+            calc_score(&final_layout)
+                .expect("final layout must score")
+                .total,
             progress.score,
             "{name}: reported score must match calc_score on the final layout"
         );
@@ -74,7 +78,7 @@ fn same_seed_is_deterministic() {
 #[test]
 fn best_so_far_is_monotone_and_never_below_initial() {
     let layout = load_layout("score-default.json");
-    let initial = calc_score(&layout).total;
+    let initial = calc_score(&layout).expect("fixture must score").total;
     let mut session = OptimizerSession::new(&layout, 1, 25_000).expect("failed to create session");
     let mut last = i32::MIN;
     loop {
@@ -109,7 +113,7 @@ fn anneal_beats_random_relocation_baseline() {
         annealed >= baseline,
         "annealing ({annealed}) must not lose to the random baseline ({baseline})"
     );
-    let initial = calc_score(&layout).total;
+    let initial = calc_score(&layout).expect("fixture must score").total;
     assert!(
         annealed > initial,
         "annealing ({annealed}) should improve on the default layout's score ({initial})"

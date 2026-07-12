@@ -4,45 +4,30 @@ import { ShapePaintGrid, normalizeCells } from "./ShapePaintGrid";
 import { btnStyle } from "./styles";
 
 export interface ShapeEditorModalProps {
-  open: boolean;
-  itemType: ItemType | null;
+  itemType: ItemType;
   onSave: (cells: Cell[]) => void;
   onClose: () => void;
   theme: string;
 }
 
-// Shape Editor Modal (5x5 grid for custom shapes)
-export function ShapeEditorModal({
-  open,
-  itemType,
-  onSave,
-  onClose,
-  theme,
-}: ShapeEditorModalProps) {
+// Shape Editor Modal (5x5 grid for custom shapes). Mounted only while open,
+// so the working cells seed once per opening via the lazy initializer.
+export function ShapeEditorModal({ itemType, onSave, onClose, theme }: ShapeEditorModalProps) {
   const isWarm = theme === "warm";
   const fg = isWarm ? "#3a2f22" : "rgba(255,255,255,0.92)";
   const fgDim = isWarm ? "rgba(60,50,40,0.55)" : "rgba(255,255,255,0.5)";
   const border = isWarm ? "rgba(60,50,40,0.15)" : "rgba(255,255,255,0.1)";
   const surface = isWarm ? "#fbf8f0" : "#141a23";
 
-  const [cells, setCells] = useState<Cell[]>([]);
+  const [cells, setCells] = useState<Cell[]>(() => itemType.cells || [[0, 0]]);
 
   useEffect(() => {
-    if (open && itemType) {
-      setCells(itemType.cells || [[0, 0]]);
-    }
-  }, [open, itemType]);
-
-  useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open || !itemType) return null;
+  }, [onClose]);
 
   const handleSave = () => {
     if (cells.length === 0) return;
@@ -89,7 +74,7 @@ export function ShapeEditorModal({
             onChange={setCells}
             color={itemType.color}
             theme={theme}
-            active={open}
+            active
           />
         </div>
 

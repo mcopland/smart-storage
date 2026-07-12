@@ -1,5 +1,7 @@
 // Abstract item glyphs (two style variants: line + solid)
 
+import type { ReactNode } from "react";
+
 export interface GlyphProps {
   kind: string;
   style?: "solid" | "glyph";
@@ -19,7 +21,7 @@ export function Glyph({ kind, style, color, w = 1, h = 1 }: GlyphProps) {
   const fill = style === "solid" ? color : "none";
   const strokeWidth = style === "solid" ? 0 : 5;
 
-  let shape = null;
+  let shape: ReactNode;
   switch (kind) {
     case "hex": {
       const pts = [];
