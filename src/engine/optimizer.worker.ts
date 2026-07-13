@@ -23,6 +23,11 @@ export type WorkerOutgoing =
 // "stalled" rarely fires, so the cap is the practical stop for those cases.
 const RUN_TIME_CAP_MS = 60_000;
 
+// Floor between non-terminal progress posts. Each post triggers a full board
+// re-render on the main thread; with a 0ms chunk delay the chunk rate is
+// bound only by compute time, so posts must be paced separately.
+const PROGRESS_MIN_INTERVAL_MS = 33;
+
 let session: OptimizerSession | null = null;
 let running = false;
 
@@ -54,6 +59,7 @@ onmessage = async (e: MessageEvent<WorkerIncoming>) => {
       session.restart_run();
       const { chunkIters, chunkDelayMs } = msg;
       const startMs = Date.now();
+      let lastProgressMs = 0;
       let sentTerminal = false;
 
       while (running) {
@@ -78,7 +84,8 @@ onmessage = async (e: MessageEvent<WorkerIncoming>) => {
           // Force done: false so the main thread doesn't flip optimizing off.
           session.restart_run();
           postMessage({ type: "progress", ...progress, done: false } satisfies WorkerOutgoing);
-        } else {
+        } else if (Date.now() - lastProgressMs >= PROGRESS_MIN_INTERVAL_MS) {
+          lastProgressMs = Date.now();
           postMessage({ type: "progress", ...progress } satisfies WorkerOutgoing);
         }
 
