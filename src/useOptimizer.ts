@@ -4,7 +4,9 @@ import type { ItemType, Placement } from "./model/types";
 import { boardSignature } from "./model/searchSpace";
 
 const CHUNK_ITERS = 5_000;
-const CHUNK_DELAY_MS = 30;
+// 0 still yields the worker's event loop between chunks (setTimeout macrotask),
+// so pause messages are processed without adding idle time to the run.
+const CHUNK_DELAY_MS = 0;
 const ITER_BUDGET = 200_000;
 
 export interface OptimizerStats {
