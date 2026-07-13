@@ -15,8 +15,7 @@ export type WorkerIncoming =
   | { type: "pause" };
 
 export type WorkerOutgoing =
-  | ({ type: "progress" } & OptimizerProgress)
-  | { type: "error"; message: string };
+  ({ type: "progress" } & OptimizerProgress) | { type: "error"; message: string };
 
 // Keep running across per-run budgets until the search stalls (no new layouts
 // in a complete run) or this wall-clock limit is exceeded. On a large grid
