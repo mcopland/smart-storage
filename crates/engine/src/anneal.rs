@@ -115,19 +115,32 @@ pub struct OptimizerSession {
     best_layouts: Vec<Vec<Pose>>,
     /// Fingerprints of every entry in `best_layouts` for O(1) dedup.
     best_fps: HashSet<u64>,
-    // Scratch buffers reused by adjacency_fp_cached to avoid per-iteration heap allocation.
-    // TODO: replace sort+hash with an order-independent incremental hash (XOR/wrapping-add of
-    // per-pair sub-hashes) to eliminate the sort entirely.
-    fp_cell_map: HashMap<(i32, i32), usize>,
-    fp_seen: HashSet<(usize, usize)>,
-    fp_pairs: Vec<(u32, u32)>,
+    /// Adjacency fingerprint of `cur`, maintained incrementally by the move
+    /// proposals (commutative sum of pair hashes; see [`adjacency_fp`]).
+    cur_fp: u64,
 }
 
-/// Connection fingerprint: FNV-1a hash of the sorted multiset of adjacent
-/// item-type pairs. Two layouts share a fingerprint iff the same item types
-/// are orthogonally adjacent in the same multiplicity -- i.e. they have the
-/// same score and the same connection structure, regardless of position,
+/// Strong 64-bit mix (splitmix64) of one unordered adjacent type pair
+/// (`ta <= tb`). Fingerprints compose these with `wrapping_add`, so the
+/// combination is order-independent while multiplicity still counts; the
+/// per-pair diffusion keeps sum collisions at the birthday bound.
+fn pair_hash(ta: u32, tb: u32) -> u64 {
+    let mut z = (((ta as u64) << 32) | tb as u64).wrapping_add(0x9E3779B97F4A7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^ (z >> 31)
+}
+
+/// Connection fingerprint: wrapping sum of [`pair_hash`] over the multiset of
+/// adjacent item-type pairs. Two layouts share a fingerprint iff the same item
+/// types are orthogonally adjacent in the same multiplicity -- i.e. they have
+/// the same score and the same connection structure, regardless of position,
 /// rotation, reflection, or which same-type instance sits where.
+///
+/// The commutative sum makes the digest order-independent, so the session can
+/// maintain it incrementally (subtract the moved item's old pair hashes, add
+/// the new ones) instead of recomputing from scratch. This function is the
+/// from-scratch reference the incremental value is tested against.
 ///
 /// `rotations[ti][rot]` gives the normalized cell offsets for type `ti` at
 /// rotation `rot`, used to expand each item's footprint without relying on
@@ -141,10 +154,10 @@ fn adjacency_fp(poses: &[Pose], item_type: &[usize], rotations: &[[Vec<Cell>; 4]
         }
     }
 
-    // Collect each unordered adjacent item pair exactly once, then map to
-    // its (min_type, max_type) pair so same-type swaps are transparent.
+    // Hash each unordered adjacent item pair exactly once, mapped to its
+    // (min_type, max_type) pair so same-type swaps are transparent.
     let mut seen: HashSet<(usize, usize)> = HashSet::new();
-    let mut type_pairs: Vec<(u32, u32)> = Vec::new();
+    let mut h = 0u64;
     for (&(cx, cy), &i) in &cell_map {
         for (nx, ny) in [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)] {
             if let Some(&j) = cell_map.get(&(nx, ny)) {
@@ -153,21 +166,10 @@ fn adjacency_fp(poses: &[Pose], item_type: &[usize], rotations: &[[Vec<Cell>; 4]
                     if seen.insert(pair) {
                         let ti = item_type[i] as u32;
                         let tj = item_type[j] as u32;
-                        type_pairs.push((ti.min(tj), ti.max(tj)));
+                        h = h.wrapping_add(pair_hash(ti.min(tj), ti.max(tj)));
                     }
                 }
             }
-        }
-    }
-    type_pairs.sort_unstable();
-
-    const OFFSET: u64 = 14695981039346656037;
-    const PRIME: u64 = 1099511628211;
-    let mut h = OFFSET;
-    for (ta, tb) in type_pairs {
-        for &b in ta.to_le_bytes().iter().chain(tb.to_le_bytes().iter()) {
-            h ^= b as u64;
-            h = h.wrapping_mul(PRIME);
         }
     }
     h
@@ -407,9 +409,7 @@ impl OptimizerSession {
             run_visited_count: 0,
             best_layouts: Vec::new(),
             best_fps: HashSet::new(),
-            fp_cell_map: HashMap::new(),
-            fp_seen: HashSet::new(),
-            fp_pairs: Vec::new(),
+            cur_fp: 0,
         };
         session.best_score = session.cur_score;
 
@@ -427,8 +427,8 @@ impl OptimizerSession {
         // Record the initial layout as the first explored state and first best.
         // visited tracks connection classes (adjacency fp); best_fps tracks
         // composition profiles (coarser) for the Prev/Next browser.
-        let afp = adjacency_fp(&session.cur, &session.item_type, &session.rotations);
-        session.visited.insert(afp);
+        session.cur_fp = adjacency_fp(&session.cur, &session.item_type, &session.rotations);
+        session.visited.insert(session.cur_fp);
         let cfp = composition_fp(
             &session.cur,
             &session.item_type,
@@ -475,6 +475,14 @@ impl OptimizerSession {
                 }
             }
         }
+        // Choke-point check for the incrementally maintained fingerprint: any
+        // mutation path that forgets to update cur_fp desyncs it permanently,
+        // so one per-chunk recompute in debug builds catches it in every test.
+        debug_assert_eq!(
+            self.cur_fp,
+            adjacency_fp(&self.cur, &self.item_type, &self.rotations),
+            "cur_fp diverged from a from-scratch adjacency_fp recompute"
+        );
         let provably_optimal = self.upper_bound > 0 && self.best_score >= self.upper_bound;
         let done = self.iter >= self.total_iters || provably_optimal;
         Progress {
@@ -540,9 +548,9 @@ impl OptimizerSession {
 
         // Record the new position in the visited set (adjacency fp) and update
         // best/best_layouts (composition fp computed inside record_best).
-        let afp = adjacency_fp(&self.cur, &self.item_type, &self.rotations);
+        self.cur_fp = adjacency_fp(&self.cur, &self.item_type, &self.rotations);
         if self.visited.len() < MAX_VISITED {
-            self.visited.insert(afp);
+            self.visited.insert(self.cur_fp);
         }
         self.record_best();
 
@@ -639,22 +647,22 @@ impl OptimizerSession {
             return false;
         }
 
+        let (before, before_fp) = self.edge_stats(i, &old_pose);
+        let (after, after_fp) = self.edge_stats(i, &new_pose);
+
         // Count the proposed layout if it has not been seen before.
         // Revisiting a known layout is allowed; only Metropolis decides acceptance.
-        self.cur[i] = new_pose;
-        let fp = self.adjacency_fp_cached();
-        self.cur[i] = old_pose;
+        let fp = self.cur_fp.wrapping_sub(before_fp).wrapping_add(after_fp);
         if !self.visited.contains(&fp) && self.visited.len() < MAX_VISITED {
             self.visited.insert(fp);
             self.run_visited_count += 1;
         }
 
-        let before = self.edges_of(i, &old_pose);
-        let after = self.edges_of(i, &new_pose);
         let delta = after - before;
         if self.accept(delta, t) {
             self.insert(i, &new_pose);
             self.cur[i] = new_pose;
+            self.cur_fp = fp;
             self.commit_delta(delta);
             true
         } else {
@@ -669,10 +677,12 @@ impl OptimizerSession {
         // Removal order matters for not double-counting the a-b edge: `a` is
         // evaluated with `b` still on the grid, `b` without `a` (and the new
         // poses mirror that), so the pair edge appears exactly once per side.
+        // The same discipline keeps the fingerprint sums exact: each changed
+        // pair's hash is subtracted/added exactly once across the four stats.
         self.remove(a, &pa);
-        let before_a = self.edges_of(a, &pa);
+        let (before_a, before_a_fp) = self.edge_stats(a, &pa);
         self.remove(b, &pb);
-        let before_b = self.edges_of(b, &pb);
+        let (before_b, before_b_fp) = self.edge_stats(b, &pb);
 
         let na = Pose {
             x: pb.x,
@@ -696,19 +706,18 @@ impl OptimizerSession {
             self.insert(a, &pa);
             return false;
         }
-        let after_b = self.edges_of(b, &nb);
+        let (after_b, after_b_fp) = self.edge_stats(b, &nb);
         self.remove(a, &na);
-        let after_a = self.edges_of(a, &na);
+        let (after_a, after_a_fp) = self.edge_stats(a, &na);
 
         // Count the proposed swap layout if it has not been seen before.
         // Revisiting a known layout is allowed; only Metropolis decides acceptance.
-        // Both a and b are temporarily out of occ here, so we only need to
-        // update cur[] to reflect the proposed state for the hash.
-        self.cur[a] = na;
-        self.cur[b] = nb;
-        let fp = self.adjacency_fp_cached();
-        self.cur[a] = pa;
-        self.cur[b] = pb;
+        let fp = self
+            .cur_fp
+            .wrapping_sub(before_a_fp)
+            .wrapping_sub(before_b_fp)
+            .wrapping_add(after_a_fp)
+            .wrapping_add(after_b_fp);
         if !self.visited.contains(&fp) && self.visited.len() < MAX_VISITED {
             self.visited.insert(fp);
             self.run_visited_count += 1;
@@ -720,6 +729,7 @@ impl OptimizerSession {
             self.insert(b, &nb);
             self.cur[a] = na;
             self.cur[b] = nb;
+            self.cur_fp = fp;
             self.commit_delta(delta);
             true
         } else {
@@ -742,6 +752,11 @@ impl OptimizerSession {
     /// the current best. Keyed by composition fingerprint so the browser
     /// holds one representative per distinct per-type score profile.
     fn record_best(&mut self) {
+        // Below best: nothing to record, and the fingerprint (a full-board
+        // scan) is not needed -- skip it on this hot path.
+        if self.cur_score < self.best_score {
+            return;
+        }
         let fp = composition_fp(&self.cur, &self.item_type, &self.rotations, &self.syn_dir);
         if self.cur_score > self.best_score {
             self.best_score = self.cur_score;
@@ -750,10 +765,9 @@ impl OptimizerSession {
             self.best_fps.clear();
             self.best_layouts.push(self.cur.to_vec());
             self.best_fps.insert(fp);
-        } else if self.cur_score == self.best_score
-            && !self.best_fps.contains(&fp)
-            && self.best_layouts.len() < MAX_BEST_LAYOUTS
-        {
+        } else if !self.best_fps.contains(&fp) && self.best_layouts.len() < MAX_BEST_LAYOUTS {
+            // Ties the best (the guard above excluded below-best): collect
+            // one representative per distinct composition profile.
             self.best_layouts.push(self.cur.to_vec());
             self.best_fps.insert(fp);
         }
@@ -776,6 +790,9 @@ impl OptimizerSession {
             let pose = self.cur[i];
             self.insert(i, &pose);
         }
+        // Wholesale replacement of cur: recompute the fingerprint from
+        // scratch. Cheap here -- resets happen a handful of times per run.
+        self.cur_fp = adjacency_fp(&self.cur, &self.item_type, &self.rotations);
     }
 
     /// Apply `n` unconditional random relocations to escape the current basin.
@@ -832,52 +849,15 @@ impl OptimizerSession {
         }
     }
 
-    /// Like `adjacency_fp` but reuses per-session scratch buffers to avoid
-    /// heap allocation on every hot-loop iteration.
-    fn adjacency_fp_cached(&mut self) -> u64 {
-        self.fp_cell_map.clear();
-        self.fp_seen.clear();
-        self.fp_pairs.clear();
-
-        for (i, pose) in self.cur.iter().enumerate() {
-            for &(dx, dy) in &self.rotations[self.item_type[i]][pose.rot as usize] {
-                self.fp_cell_map.insert((pose.x + dx, pose.y + dy), i);
-            }
-        }
-
-        for (&(cx, cy), &i) in &self.fp_cell_map {
-            for (nx, ny) in [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)] {
-                if let Some(&j) = self.fp_cell_map.get(&(nx, ny)) {
-                    if i != j {
-                        let pair = (i.min(j), i.max(j));
-                        if self.fp_seen.insert(pair) {
-                            let ti = self.item_type[i] as u32;
-                            let tj = self.item_type[j] as u32;
-                            self.fp_pairs.push((ti.min(tj), ti.max(tj)));
-                        }
-                    }
-                }
-            }
-        }
-        self.fp_pairs.sort_unstable();
-
-        const OFFSET: u64 = 14695981039346656037;
-        const PRIME: u64 = 1099511628211;
-        let mut h = OFFSET;
-        for (ta, tb) in &self.fp_pairs {
-            for &b in ta.to_le_bytes().iter().chain(tb.to_le_bytes().iter()) {
-                h ^= b as u64;
-                h = h.wrapping_mul(PRIME);
-            }
-        }
-        h
-    }
-
-    /// Sum of pair scores between item `i` (hypothetically at `pose`, and not
-    /// currently on the grid) and every distinct adjacent item.
-    fn edges_of(&self, i: usize, pose: &Pose) -> i32 {
+    /// Pair-score sum and pair-hash sum between item `i` (hypothetically at
+    /// `pose`, and not currently on the grid) and every distinct adjacent
+    /// item. The hash sum is the item's contribution to the layout's
+    /// adjacency fingerprint, so proposals can update `cur_fp` incrementally.
+    fn edge_stats(&self, i: usize, pose: &Pose) -> (i32, u64) {
         let mut seen: Vec<u16> = Vec::with_capacity(8);
         let mut sum = 0;
+        let mut fp = 0u64;
+        let ti = self.item_type[i];
         for &(dx, dy) in self.shape(i, pose) {
             let x = pose.x + dx;
             let y = pose.y + dy;
@@ -888,12 +868,14 @@ impl OptimizerSession {
                 if let Some(j) = self.occ[self.cell_index(nx, ny)] {
                     if !seen.contains(&j) {
                         seen.push(j);
-                        sum += self.syn2[self.item_type[i]][self.item_type[j as usize]];
+                        let tj = self.item_type[j as usize];
+                        sum += self.syn2[ti][tj];
+                        fp = fp.wrapping_add(pair_hash(ti.min(tj) as u32, ti.max(tj) as u32));
                     }
                 }
             }
         }
-        sum
+        (sum, fp)
     }
 
     fn poses_to_placements(&self, poses: &[Pose]) -> Vec<Placement> {
@@ -1189,6 +1171,118 @@ mod tests {
         // must not panic and must return consistently.
         let _ = rot0;
         let _ = rot1;
+    }
+
+    #[test]
+    fn adjacency_fp_differs_for_pair_multiplicity() {
+        // One (0,1) adjacency vs two disjoint (0,1) adjacencies: the multiset
+        // counts differ, so the fingerprints must differ. Guards the digest
+        // against schemes that collapse repeated pairs.
+        let rots = vec![
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+            [vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]],
+        ];
+        let one_pair = adjacency_fp(
+            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 1, y: 0, rot: 0 }],
+            &[0, 1],
+            &rots,
+        );
+        let two_pairs = adjacency_fp(
+            &[
+                Pose { x: 0, y: 0, rot: 0 },
+                Pose { x: 1, y: 0, rot: 0 },
+                Pose { x: 0, y: 2, rot: 0 },
+                Pose { x: 1, y: 2, rot: 0 },
+            ],
+            &[0, 1, 0, 1],
+            &rots,
+        );
+        assert_ne!(
+            one_pair, two_pairs,
+            "pair multiplicity must be reflected in the fingerprint"
+        );
+    }
+
+    // Synergy-rich mixed-shape layout so the walk exercises accepts, rejects,
+    // rotations, swaps, and stagnation restarts.
+    fn fp_walk_layout() -> Layout {
+        let syn = |tag: &str, positive: bool| Synergy {
+            tag: tag.to_string(),
+            positive: Some(positive),
+        };
+        let mut a = shape("a", vec![(0, 0), (1, 0)]);
+        a.tags = vec!["alpha".to_string()];
+        a.synergies = vec![syn("beta", true), syn("gamma", false)];
+        let mut b = shape("b", vec![(0, 0), (0, 1), (1, 1)]);
+        b.tags = vec!["beta".to_string()];
+        b.synergies = vec![syn("alpha", true)];
+        let mut c = shape("c", vec![(0, 0)]);
+        c.tags = vec!["gamma".to_string()];
+        c.synergies = vec![syn("beta", true)];
+        let placements = [
+            ("p0", "a", 0, 0),
+            ("p1", "b", 3, 0),
+            ("p2", "c", 6, 0),
+            ("p3", "a", 0, 3),
+            ("p4", "b", 3, 3),
+            ("p5", "c", 6, 3),
+        ]
+        .into_iter()
+        .map(|(id, type_id, x, y)| Placement {
+            id: id.to_string(),
+            type_id: type_id.to_string(),
+            x,
+            y,
+            rot: 0,
+        })
+        .collect();
+        Layout {
+            item_types: vec![a, b, c],
+            grid_w: 8,
+            grid_h: 8,
+            disabled_cells: vec![],
+            placements,
+        }
+    }
+
+    #[test]
+    fn incremental_fp_matches_full_recompute_after_random_walk() {
+        // The incrementally maintained fingerprint of `cur` must equal a
+        // from-scratch recompute at every observation point: after long walks
+        // (which include kicks and stagnation resets given the small budget),
+        // after restart_run, and after reseat.
+        fn assert_fp(session: &OptimizerSession, at: &str) {
+            assert_eq!(
+                session.cur_fp,
+                adjacency_fp(&session.cur, &session.item_type, &session.rotations),
+                "fingerprint diverged: {at}"
+            );
+        }
+
+        let layout = fp_walk_layout();
+        // total_iters 4_000 -> stagnation_limit 500, so step(4_000) passes
+        // through several reset_to_best + kick cycles.
+        let mut session = OptimizerSession::new(&layout, 123, 4_000).expect("session");
+        assert_fp(&session, "at construction");
+
+        for chunk in 0..8 {
+            session.step(500);
+            assert_fp(&session, &format!("after chunk {chunk}"));
+        }
+
+        session.restart_run();
+        assert_fp(&session, "after restart_run");
+
+        // Reseat to a shifted-but-legal arrangement of the same ids.
+        let mut moved = layout.clone();
+        for p in &mut moved.placements {
+            p.y += 1;
+        }
+        session.reseat(&moved).expect("reseat");
+        assert_fp(&session, "after reseat");
+
+        session.step(1_000);
+        assert_fp(&session, "after post-reseat walk");
     }
 
     #[test]
