@@ -1,0 +1,24 @@
+{
+  "itemTypes": [{ "id": "dot", "tags": [], "synergies": [], "cells": [[0, 0]] }],
+  "gridW": 2,
+  "gridH": 2,
+  "disabledCells": [],
+  "placements": [
+    { "id": "p0", "type": "dot", "x": 0, "y": 0, "rot": 0 },
+    { "id": "p1", "type": "dot", "x": 1, "y": 1, "rot": 0 }
+  ],
+  "expected": {
+    "progressKeys": [
+      "bestLayoutCount",
+      "done",
+      "explored",
+      "itersDone",
+      "placements",
+      "provablyOptimal",
+      "score",
+      "stalled",
+      "upperBound"
+    ],
+    "placementKeys": ["id", "rot", "type", "x", "y"]
+  }
+}
