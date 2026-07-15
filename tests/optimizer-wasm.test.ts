@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createOptimizerSession, type OptimizerProgress } from "../src/engine/optimizerSession";
 import { engineScore, initEngine } from "../src/engine/wasm";
 import type { ItemType, Placement } from "../src/model/types";
+import progressShape from "./fixtures/progress-shape.json";
 import scoreDefault from "./fixtures/score-default.json";
 
 beforeAll(async () => {
@@ -75,6 +76,36 @@ describe("optimizer session via WASM", () => {
         1000,
       ),
     ).toThrowError(/ghost/);
+  });
+});
+
+describe("progress wire shape", () => {
+  // The runtime object comes from serde via wasm-bindgen; the fixture freezes
+  // its shape so a serde rename cannot silently drift from the hand-written
+  // EngineProgress/EnginePlacement declarations in wasm.rs. The cargo suite
+  // asserts the same fixture (fixtures_test.rs::progress_shape_matches_fixture).
+  it("step() returns exactly the frozen EngineProgress keys", () => {
+    const session = createOptimizerSession(
+      {
+        itemTypes: progressShape.itemTypes as ItemType[],
+        gridW: progressShape.gridW,
+        gridH: progressShape.gridH,
+        disabledCells: progressShape.disabledCells,
+        placements: progressShape.placements as Placement[],
+      },
+      0,
+      100,
+    );
+    try {
+      const progress = session.step(0);
+      expect(Object.keys(progress).sort()).toEqual(progressShape.expected.progressKeys);
+      expect(progress.placements.length).toBeGreaterThan(0);
+      expect(Object.keys(progress.placements[0]).sort()).toEqual(
+        progressShape.expected.placementKeys,
+      );
+    } finally {
+      session.free();
+    }
   });
 });
 
