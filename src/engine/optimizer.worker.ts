@@ -39,10 +39,12 @@ self.onmessage = async (e: MessageEvent<WorkerIncoming>) => {
     await initEngine();
 
     if (msg.type === "init") {
-      session?.free();
-      // Cleared before creating: if creation throws, a stale `session` would
-      // point at the freed wasm object and poison every subsequent message.
+      // Detached before freeing/creating: if either throws, a stale `session`
+      // would point at the freed wasm object and poison every subsequent
+      // message.
+      const old = session;
       session = null;
+      old?.free();
       session = createOptimizerSession(msg.layout, msg.seed, msg.iterBudget);
       return;
     }
