@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createOptimizerSession, type OptimizerProgress } from "../src/engine/optimizerSession";
 import { engineScore, initEngine } from "../src/engine/wasm";
-import type { ItemType, Placement } from "../src/model/types";
+import type { Cell, ItemType, Placement } from "../src/model/types";
 import progressShape from "./fixtures/progress-shape.json";
 import scoreDefault from "./fixtures/score-default.json";
 
@@ -87,7 +87,10 @@ describe("progress wire shape", () => {
   it("step() returns exactly the frozen EngineProgress keys", () => {
     const session = createOptimizerSession(
       {
-        itemTypes: progressShape.itemTypes as ItemType[],
+        itemTypes: progressShape.itemTypes.map(t => ({
+          ...t,
+          cells: t.cells.map(([x, y]): Cell => [x, y]),
+        })),
         gridW: progressShape.gridW,
         gridH: progressShape.gridH,
         disabledCells: progressShape.disabledCells,
