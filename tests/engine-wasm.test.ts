@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
-import { engineScore, initEngine } from "../src/engine/wasm";
+import { engineScore } from "../src/engine/wasm";
 import type { ItemType, Placement, ScoreResult } from "../src/model/types";
 import scoreCustom from "./fixtures/score-custom-types.json";
 import scoreDefault from "./fixtures/score-default.json";
@@ -8,13 +7,9 @@ import scoreEmpty from "./fixtures/score-empty.json";
 import scoreNegative from "./fixtures/score-negative.json";
 import scoreRotated from "./fixtures/score-rotated.json";
 import scoreSingle from "./fixtures/score-single.json";
+import { initEngineFromDisk } from "./helpers";
 
-// In Node there is no fetch-able asset URL, so initialize the engine from the
-// compiled wasm bytes directly.
-beforeAll(async () => {
-  const wasmUrl = new URL("../crates/engine/pkg/engine_bg.wasm", import.meta.url);
-  await initEngine(await readFile(wasmUrl));
-});
+beforeAll(initEngineFromDisk);
 
 // Neighbor order is an implementation detail; compare sorted.
 const normalize = (r: ScoreResult): ScoreResult => ({

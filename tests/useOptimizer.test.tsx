@@ -112,11 +112,7 @@ function renderOptimizer(initial?: Partial<HookProps>) {
 }
 
 beforeEach(() => {
-  mock.client.init.mockClear();
-  mock.client.run.mockClear();
-  mock.client.pause.mockClear();
-  mock.client.reseat.mockClear();
-  mock.client.dispose.mockClear();
+  vi.clearAllMocks();
 });
 
 describe("session sync: init vs reseat", () => {
