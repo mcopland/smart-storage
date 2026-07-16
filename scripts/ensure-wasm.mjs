@@ -20,18 +20,23 @@ function mtimeOf(file) {
 }
 
 function newestMtimeUnder(dir) {
-  let newest = 0;
+  // The directory's own mtime covers deletions and renames, which never
+  // touch the surviving files' mtimes.
+  let newest = mtimeOf(dir) ?? 0;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    const mtime = entry.isDirectory() ? newestMtimeUnder(full) : statSync(full).mtimeMs;
+    const mtime = entry.isDirectory() ? newestMtimeUnder(full) : (mtimeOf(full) ?? 0);
     if (mtime > newest) newest = mtime;
   }
   return newest;
 }
 
-// engine_bg.wasm is written last by wasm-pack's bindgen step, so its mtime
-// stands in for "when the package was built".
-const artifactMtime = mtimeOf(path.join(pkg, "engine_bg.wasm"));
+// Every artifact the app imports must exist; the oldest stands in for "when
+// the package was last fully built", so a partial pkg/ never counts as fresh.
+const artifactMtimes = ["engine.js", "engine.d.ts", "engine_bg.wasm", "engine_bg.wasm.d.ts"].map(
+  name => mtimeOf(path.join(pkg, name)),
+);
+const artifactMtime = artifactMtimes.includes(null) ? null : Math.min(...artifactMtimes);
 const sourcesMtime = Math.max(
   newestMtimeUnder(path.join(crate, "src")),
   mtimeOf(path.join(crate, "Cargo.toml")) ?? 0,
@@ -44,7 +49,7 @@ if (artifactMtime !== null && artifactMtime >= sourcesMtime) {
 
 console.log(
   artifactMtime === null
-    ? "ensure-wasm: crates/engine/pkg missing, building..."
+    ? "ensure-wasm: crates/engine/pkg missing or incomplete, building..."
     : "ensure-wasm: crates/engine sources changed, rebuilding...",
 );
 try {

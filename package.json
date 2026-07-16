@@ -6,11 +6,11 @@
   "scripts": {
     "build:wasm": "wasm-pack build crates/engine --target web",
     "ensure:wasm": "node scripts/ensure-wasm.mjs",
-    "dev": "npm run ensure:wasm && vite",
-    "build": "npm run ensure:wasm && tsc --noEmit && vite build",
+    "dev": "node scripts/ensure-wasm.mjs && vite",
+    "build": "node scripts/ensure-wasm.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "npm run ensure:wasm && vitest run",
-    "typecheck": "npm run ensure:wasm && tsc --noEmit",
+    "test": "node scripts/ensure-wasm.mjs && vitest run",
+    "typecheck": "node scripts/ensure-wasm.mjs && tsc --noEmit",
     "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
