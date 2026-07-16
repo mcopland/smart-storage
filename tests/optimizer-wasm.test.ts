@@ -1,15 +1,12 @@
-import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createOptimizerSession, type OptimizerProgress } from "../src/engine/optimizerSession";
-import { engineScore, initEngine } from "../src/engine/wasm";
+import { engineScore } from "../src/engine/wasm";
 import type { Cell, ItemType, Placement } from "../src/model/types";
 import progressShape from "./fixtures/progress-shape.json";
 import scoreDefault from "./fixtures/score-default.json";
+import { dotLayout, initEngineFromDisk, synergyLayout } from "./helpers";
 
-beforeAll(async () => {
-  const wasmUrl = new URL("../crates/engine/pkg/engine_bg.wasm", import.meta.url);
-  await initEngine(await readFile(wasmUrl));
-});
+beforeAll(initEngineFromDisk);
 
 const layout = {
   itemTypes: scoreDefault.itemTypes as ItemType[],
@@ -114,19 +111,13 @@ describe("progress wire shape", () => {
 
 describe("best_layouts collection", () => {
   // Small dot layout: all arrangements score 0 so every distinct position ties.
-  const dotLayout = {
-    itemTypes: [{ id: "dot", tags: [], synergies: [], cells: [[0, 0]] as [number, number][] }],
-    gridW: 3,
-    gridH: 3,
-    disabledCells: [] as string[],
-    placements: [
-      { id: "p0", type: "dot", x: 0, y: 0, rot: 0 },
-      { id: "p1", type: "dot", x: 2, y: 2, rot: 0 },
-    ],
-  };
+  const dots = dotLayout(3, 3, [
+    [0, 0],
+    [2, 2],
+  ]);
 
   it("progress includes bestLayoutCount >= 1", () => {
-    const session = createOptimizerSession(dotLayout, 7, 5_000);
+    const session = createOptimizerSession(dots, 7, 5_000);
     try {
       let last!: OptimizerProgress;
       for (;;) {
@@ -140,7 +131,7 @@ describe("best_layouts collection", () => {
   });
 
   it("best_layouts() returns at least one entry and count matches progress", () => {
-    const session = createOptimizerSession(dotLayout, 1, 20_000);
+    const session = createOptimizerSession(dots, 1, 20_000);
     try {
       let last!: OptimizerProgress;
       for (;;) {
@@ -154,7 +145,7 @@ describe("best_layouts collection", () => {
       expect(bests.length).toBe(last.bestLayoutCount);
       // Each entry must be a non-empty array of placements.
       for (const group of bests) {
-        expect(group.length).toBe(dotLayout.placements.length);
+        expect(group.length).toBe(dots.placements.length);
         for (const p of group) {
           expect(p).toHaveProperty("id");
           expect(p).toHaveProperty("type");
@@ -165,31 +156,6 @@ describe("best_layouts collection", () => {
     }
   });
 });
-
-// Small layout with two mutually-synergizing types, reused across several tests.
-const synergyLayout = {
-  itemTypes: [
-    {
-      id: "a",
-      tags: ["x"],
-      synergies: [{ tag: "x", positive: true }],
-      cells: [[0, 0]] as [number, number][],
-    },
-    {
-      id: "b",
-      tags: ["x"],
-      synergies: [{ tag: "x", positive: true }],
-      cells: [[0, 0]] as [number, number][],
-    },
-  ],
-  gridW: 5,
-  gridH: 1,
-  disabledCells: [] as string[],
-  placements: [
-    { id: "p0", type: "a", x: 0, y: 0, rot: 0 },
-    { id: "p1", type: "b", x: 4, y: 0, rot: 0 },
-  ],
-};
 
 describe("composition-based dedup", () => {
   // Helper: aggregate perItem bonus by type id -> sorted "type:bonus|..." string.
@@ -222,11 +188,8 @@ describe("composition-based dedup", () => {
       expect(bests.length).toBeGreaterThanOrEqual(1);
       // Rescore each entry and compute composition signatures.
       const signatures = bests.map(group => {
-        const scored = engineScore({
-          ...synergyLayout,
-          placements: group as (typeof synergyLayout.placements)[number][],
-        });
-        return compositionSignature(group as { id: string; type: string }[], scored);
+        const scored = engineScore({ ...synergyLayout, placements: group });
+        return compositionSignature(group, scored);
       });
       expect(new Set(signatures).size).toBe(bests.length);
     } finally {

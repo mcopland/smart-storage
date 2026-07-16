@@ -9,37 +9,10 @@
 // constraint: only the first Worker created by @vitest/web-worker shares the
 // test's module graph, and later ones cannot load the WASM engine under Node.
 import "@vitest/web-worker";
-import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createOptimizerClient, type OptimizerClient } from "../src/engine/optimizer";
 import type { OptimizerProgress } from "../src/engine/optimizerSession";
-import { initEngine } from "../src/engine/wasm";
-
-// Two single-cell items with mutual positive synergy on a 5x1 strip: small
-// space, provably-optimal score 2, so runs terminate fast and deterministically.
-const synergyLayout = {
-  itemTypes: [
-    {
-      id: "a",
-      tags: ["x"],
-      synergies: [{ tag: "x", positive: true }],
-      cells: [[0, 0]] as [number, number][],
-    },
-    {
-      id: "b",
-      tags: ["x"],
-      synergies: [{ tag: "x", positive: true }],
-      cells: [[0, 0]] as [number, number][],
-    },
-  ],
-  gridW: 5,
-  gridH: 1,
-  disabledCells: [] as string[],
-  placements: [
-    { id: "p0", type: "a", x: 0, y: 0, rot: 0 },
-    { id: "p1", type: "b", x: 4, y: 0, rot: 0 },
-  ],
-};
+import { dotLayout, initEngineFromDisk, synergyLayout } from "./helpers";
 
 interface Harness {
   progresses: OptimizerProgress[];
@@ -53,7 +26,6 @@ interface Harness {
 }
 
 let client: OptimizerClient;
-let current: Harness | null = null;
 let currentSink: { onProgress(p: OptimizerProgress): void; onError(m: string): void };
 
 // Fresh capture buffers for one test; the underlying client/worker persists.
@@ -77,19 +49,17 @@ function createHarness(): Harness {
       resolveError(message);
     },
   };
-  current = {
+  return {
     progresses,
     errors,
     terminal,
     firstError,
     nextProgress: () => new Promise<OptimizerProgress>(r => waiters.push(r)),
   };
-  return current;
 }
 
 beforeAll(async () => {
-  const wasmUrl = new URL("../crates/engine/pkg/engine_bg.wasm", import.meta.url);
-  await initEngine(await readFile(wasmUrl));
+  await initEngineFromDisk();
   client = createOptimizerClient(
     p => currentSink.onProgress(p),
     m => currentSink.onError(m),
@@ -131,19 +101,11 @@ describe("optimizer worker protocol", () => {
     const h = createHarness();
     // 6 free-floating dots on 6x6: no synergies, so never provably optimal,
     // and far too many distinct layouts to stall within a few tiny budgets.
-    const dots = {
-      itemTypes: [{ id: "dot", tags: [], synergies: [], cells: [[0, 0]] as [number, number][] }],
-      gridW: 6,
-      gridH: 6,
-      disabledCells: [] as string[],
-      placements: Array.from({ length: 6 }, (_, i) => ({
-        id: `p${i}`,
-        type: "dot",
-        x: i,
-        y: 0,
-        rot: 0,
-      })),
-    };
+    const dots = dotLayout(
+      6,
+      6,
+      Array.from({ length: 6 }, (_, i): [number, number] => [i, 0]),
+    );
     client.init(dots, 7, 200);
     client.run(200, 0);
 
