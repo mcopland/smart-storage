@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   { ignores: ["dist", "crates/engine/pkg", "crates/engine/target"] },
   {
-    files: ["src/**/*.{ts,tsx}", "tests/**/*.ts", "vite.config.ts"],
+    files: ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "vite.config.ts"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     plugins: { "react-hooks": reactHooks },
     rules: { ...reactHooks.configs.recommended.rules },
