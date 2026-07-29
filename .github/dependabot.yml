@@ -11,13 +11,34 @@ updates:
           - react-dom
           - "@types/react"
           - "@types/react-dom"
+      dev-dependencies:
+        dependency-type: development
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      dev-dependencies-major:
+        dependency-type: development
+        patterns:
+          - "*"
+        update-types:
+          - major
 
   - package-ecosystem: cargo
     directory: /crates/engine
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      cargo:
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
