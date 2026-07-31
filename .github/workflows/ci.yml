@@ -26,6 +26,7 @@ jobs:
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: crates/engine
         continue-on-error: true
 
   web:
