@@ -1,4 +1,4 @@
 tests/fixtures/
 crates/engine/pkg/
 dist/
-package-lock.json
+pnpm-lock.yaml
