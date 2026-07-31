@@ -1247,15 +1247,28 @@ mod tests {
 
     #[test]
     fn incremental_fp_matches_full_recompute_after_random_walk() {
-        // The incrementally maintained fingerprint of `cur` must equal a
-        // from-scratch recompute at every observation point: after long walks
-        // (which include kicks and stagnation resets given the small budget),
-        // after restart_run, and after reseat.
-        fn assert_fp(session: &OptimizerSession, at: &str) {
+        // The incrementally maintained fingerprint AND running score of `cur`
+        // must equal a from-scratch recompute at every observation point:
+        // after long walks (which include kicks and stagnation resets given
+        // the small budget), after restart_run, and after reseat. The score
+        // check guards the delta accumulation in try_single/try_swap/
+        // commit_delta, whose sign or off-by-one bugs could cancel out by the
+        // time a best is recorded.
+        fn assert_consistent(session: &OptimizerSession, base: &Layout, at: &str) {
             assert_eq!(
                 session.cur_fp,
                 adjacency_fp(&session.cur, &session.item_type, &session.rotations),
                 "fingerprint diverged: {at}"
+            );
+            let full = calc_score(&Layout {
+                placements: session.poses_to_placements(&session.cur),
+                ..base.clone()
+            })
+            .expect("current layout must score")
+            .total;
+            assert_eq!(
+                session.cur_score, full,
+                "incremental score diverged from full recompute: {at}"
             );
         }
 
@@ -1263,15 +1276,15 @@ mod tests {
         // total_iters 4_000 -> stagnation_limit 500, so step(4_000) passes
         // through several reset_to_best + kick cycles.
         let mut session = OptimizerSession::new(&layout, 123, 4_000).expect("session");
-        assert_fp(&session, "at construction");
+        assert_consistent(&session, &layout, "at construction");
 
         for chunk in 0..8 {
             session.step(500);
-            assert_fp(&session, &format!("after chunk {chunk}"));
+            assert_consistent(&session, &layout, &format!("after chunk {chunk}"));
         }
 
         session.restart_run();
-        assert_fp(&session, "after restart_run");
+        assert_consistent(&session, &layout, "after restart_run");
 
         // Reseat to a shifted-but-legal arrangement of the same ids.
         let mut moved = layout.clone();
@@ -1279,10 +1292,10 @@ mod tests {
             p.y += 1;
         }
         session.reseat(&moved).expect("reseat");
-        assert_fp(&session, "after reseat");
+        assert_consistent(&session, &layout, "after reseat");
 
         session.step(1_000);
-        assert_fp(&session, "after post-reseat walk");
+        assert_consistent(&session, &layout, "after post-reseat walk");
     }
 
     #[test]

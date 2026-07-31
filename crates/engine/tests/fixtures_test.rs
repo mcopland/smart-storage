@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use engine::anneal::OptimizerSession;
 use engine::model::{rotate_cells, Cell, Layout, Placement};
 use engine::score::calc_score;
 
@@ -195,6 +196,54 @@ fn assert_score_fixture(name: &str) {
             "{name}: neighbors for {id}"
         );
     }
+}
+
+// --- progress wire shape ---
+
+#[derive(Deserialize)]
+struct ProgressShapeFixture {
+    #[serde(flatten)]
+    layout: Layout,
+    expected: ExpectedProgressShape,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExpectedProgressShape {
+    progress_keys: Vec<String>,
+    placement_keys: Vec<String>,
+}
+
+fn sorted_keys(value: &serde_json::Value) -> Vec<String> {
+    value
+        .as_object()
+        .expect("value must serialize to a JSON object")
+        .keys()
+        .cloned()
+        .collect() // serde_json::Map iterates in sorted key order by default
+}
+
+/// The `Progress` snapshot is consumed by TypeScript through the hand-written
+/// `typescript_custom_section` in wasm.rs; this freezes its serialized shape so
+/// a serde rename cannot silently drift from the declared `EngineProgress`.
+#[test]
+fn progress_shape_matches_fixture() {
+    let fixture: ProgressShapeFixture = load("progress-shape.json");
+    let mut session =
+        OptimizerSession::new(&fixture.layout, 0, 100).expect("fixture layout must be legal");
+    let progress = serde_json::to_value(session.step(0)).expect("progress must serialize");
+
+    assert_eq!(
+        sorted_keys(&progress),
+        fixture.expected.progress_keys,
+        "Progress keys drifted; update wasm.rs EngineProgress and the fixture together"
+    );
+    let placement = &progress["placements"][0];
+    assert_eq!(
+        sorted_keys(placement),
+        fixture.expected.placement_keys,
+        "Placement keys drifted; update wasm.rs EnginePlacement and the fixture together"
+    );
 }
 
 #[test]

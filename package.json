@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "build:wasm": "wasm-pack build crates/engine --target web",
-    "dev": "pnpm run build:wasm && vite",
-    "build": "pnpm run build:wasm && tsc --noEmit && vite build",
+    "ensure:wasm": "node scripts/ensure-wasm.mjs",
+    "dev": "node scripts/ensure-wasm.mjs && vite",
+    "build": "node scripts/ensure-wasm.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "pnpm run build:wasm && vitest run",
-    "typecheck": "tsc --noEmit",
+    "test": "node scripts/ensure-wasm.mjs && vitest run",
+    "typecheck": "node scripts/ensure-wasm.mjs && tsc --noEmit",
     "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
@@ -18,12 +19,15 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "@vitest/web-worker": "^4.1.10",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "happy-dom": "^20.10.6",
     "prettier": "^3.9.6",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",

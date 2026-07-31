@@ -30,14 +30,21 @@ const PROGRESS_MIN_INTERVAL_MS = 33;
 let session: OptimizerSession | null = null;
 let running = false;
 
-onmessage = async (e: MessageEvent<WorkerIncoming>) => {
+// Assigned via `self` (identical in a real worker) so test shims that only
+// intercept properties of the worker global scope observe the handler.
+self.onmessage = async (e: MessageEvent<WorkerIncoming>) => {
   const msg = e.data;
   try {
     // Engine init is idempotent (no-op after the first call).
     await initEngine();
 
     if (msg.type === "init") {
-      session?.free();
+      // Detached before freeing/creating: if either throws, a stale `session`
+      // would point at the freed wasm object and poison every subsequent
+      // message.
+      const old = session;
+      session = null;
+      old?.free();
       session = createOptimizerSession(msg.layout, msg.seed, msg.iterBudget);
       return;
     }
