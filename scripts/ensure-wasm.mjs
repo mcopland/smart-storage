@@ -1,6 +1,6 @@
 // Run wasm-pack only when crates/engine/pkg is missing or older than the
 // crate's sources, so dev/test/typecheck don't pay a rebuild on every run.
-// `npm run build:wasm` remains the unconditional escape hatch.
+// `pnpm run build:wasm` remains the unconditional escape hatch.
 import { execSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -53,7 +53,7 @@ console.log(
     : "ensure-wasm: crates/engine sources changed, rebuilding...",
 );
 try {
-  execSync("npm run build:wasm", { cwd: root, stdio: "inherit" });
+  execSync("pnpm run build:wasm", { cwd: root, stdio: "inherit" });
 } catch (err) {
   console.error(`ensure-wasm: wasm-pack build failed (exit ${err.status ?? "unknown"})`);
   process.exit(err.status ?? 1);
