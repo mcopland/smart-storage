@@ -13,19 +13,19 @@ The app is fully client-side and statically deployable: React + TypeScript built
 ## Development
 
 ```sh
-npm install
-npm run dev        # builds the WASM engine, then starts Vite at http://localhost:5173
+pnpm install
+pnpm run dev        # builds the WASM engine, then starts Vite at http://localhost:5173
 ```
 
 Other scripts:
 
 ```sh
-npm run build:wasm # compile crates/engine to crates/engine/pkg (wasm-pack, web target)
-npm run build      # WASM + typecheck + production bundle in dist/
-npm run preview    # serve the production bundle locally
-npm test           # WASM + Vitest suite
-npm run typecheck  # tsc --noEmit
-npm run lint       # ESLint (typescript-eslint + react-hooks, zero warnings allowed)
+pnpm run build:wasm # compile crates/engine to crates/engine/pkg (wasm-pack, web target)
+pnpm run build      # WASM + typecheck + production bundle in dist/
+pnpm run preview    # serve the production bundle locally
+pnpm test           # WASM + Vitest suite
+pnpm run typecheck  # tsc --noEmit
+pnpm run lint       # ESLint (typescript-eslint + react-hooks, zero warnings allowed)
 ```
 
 Rust engine checks (from `crates/engine`):
@@ -36,7 +36,7 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
-CI runs all of the above plus `npx prettier --check .`, and non-blocking `cargo audit` / `npm audit` steps.
+CI runs all of the above plus `pnpm exec prettier --check .`, and non-blocking `cargo audit` / `pnpm audit` steps.
 
 ## Architecture
 
