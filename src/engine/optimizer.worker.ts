@@ -30,6 +30,13 @@ const PROGRESS_MIN_INTERVAL_MS = 33;
 let session: OptimizerSession | null = null;
 let running = false;
 
+// Incremented per `run`. A loop that is no longer the current generation has
+// been superseded and exits without posting: `run, pause, run` in quick
+// succession would otherwise start the second loop before the first had
+// observed the pause, stepping one session from two loops and posting two
+// terminal snapshots for a single user-visible run.
+let generation = 0;
+
 // `run` and `reseat` are meaningless without a session, and the main thread has
 // already flipped `optimizing` on by the time `run` arrives -- going quiet here
 // leaves the button stuck on "Cancel" with nothing behind it.
@@ -78,6 +85,7 @@ self.onmessage = async (e: MessageEvent<WorkerIncoming>) => {
         postNoSession(msg.type);
         return;
       }
+      const myGeneration = ++generation;
       running = true;
       session.restart_run();
       const { chunkIters, chunkDelayMs } = msg;
@@ -85,7 +93,7 @@ self.onmessage = async (e: MessageEvent<WorkerIncoming>) => {
       let lastProgressMs = 0;
       let sentTerminal = false;
 
-      while (running) {
+      while (running && myGeneration === generation) {
         const progress = session.step(chunkIters);
         const elapsed = Date.now() - startMs;
 
@@ -117,8 +125,9 @@ self.onmessage = async (e: MessageEvent<WorkerIncoming>) => {
       }
 
       // Paused externally: send a terminal snapshot with bestLayouts so the
-      // main thread can populate the Prev/Next browser.
-      if (!sentTerminal) {
+      // main thread can populate the Prev/Next browser. A superseded loop stays
+      // silent -- the run that replaced it owns the terminal message.
+      if (!sentTerminal && myGeneration === generation) {
         const snapshot = session.step(0);
         postMessage({
           type: "progress",
