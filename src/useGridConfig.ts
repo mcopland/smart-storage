@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { cellsOf, resizeFit } from "./model/geometry";
+import { GRID_MAX, GRID_MIN } from "./model/gridBounds";
 import type { GridSize, Placement, TypesById } from "./model/types";
 import type { BoardActions } from "./useBoard";
 
@@ -34,7 +35,7 @@ export function useGridConfig({
   // genuinely can't fit the requested size.
   const onSafeResizeW = useCallback(
     (newW: number) => {
-      const w = Math.max(2, Math.min(20, newW));
+      const w = Math.max(GRID_MIN, Math.min(GRID_MAX, newW));
       const res = resizeFit(placements, disabledCells, w, gridH, typeById);
       if (!res) return;
       board.setPlacements(res.placements);
@@ -46,7 +47,7 @@ export function useGridConfig({
 
   const onSafeResizeH = useCallback(
     (newH: number) => {
-      const h = Math.max(2, Math.min(20, newH));
+      const h = Math.max(GRID_MIN, Math.min(GRID_MAX, newH));
       const res = resizeFit(placements, disabledCells, gridW, h, typeById);
       if (!res) return;
       board.setPlacements(res.placements);

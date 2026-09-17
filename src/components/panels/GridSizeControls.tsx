@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { GRID_MAX, GRID_MIN } from "../../model/gridBounds";
 import { MINUS, TIMES } from "./chars";
 
 function inlineStepBtn(theme: string): CSSProperties {
@@ -104,9 +105,9 @@ export function GridSizeControls({
       >
         grid
       </span>
-      <InlineStep value={gridW} onChange={onChangeW} min={2} max={20} theme={theme} />
+      <InlineStep value={gridW} onChange={onChangeW} min={GRID_MIN} max={GRID_MAX} theme={theme} />
       <span style={{ color: fgFaint, font: "12px/1 Inter, sans-serif" }}>{TIMES}</span>
-      <InlineStep value={gridH} onChange={onChangeH} min={2} max={20} theme={theme} />
+      <InlineStep value={gridH} onChange={onChangeH} min={GRID_MIN} max={GRID_MAX} theme={theme} />
     </div>
   );
 }

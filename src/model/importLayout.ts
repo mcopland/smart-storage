@@ -1,4 +1,5 @@
 import { cellsOf } from "./geometry";
+import { GRID_MAX, GRID_MIN } from "./gridBounds";
 import type { Cell, GridSize, Inventory, ItemType, Placement, TypesById } from "./types";
 
 export interface ImportedLayout {
@@ -7,6 +8,16 @@ export interface ImportedLayout {
   disabledCells?: string[];
   itemTypes?: ItemType[];
   inventory?: Inventory;
+}
+
+// The live board the file is merged into. An import is a patch, so any section
+// the file omits keeps the current value -- and the merged result is what has
+// to be legal.
+export interface ImportContext {
+  itemTypes: ItemType[];
+  placements: Placement[];
+  gridSize: GridSize;
+  disabledCells: Set<string>;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -25,6 +36,18 @@ function requireInt(obj: Record<string, unknown>, field: string, where: string):
   const v = requireNumber(obj, field, where);
   if (!Number.isInteger(v)) {
     throw new Error(`import failed: ${where} "${field}" must be an integer (got ${v})`);
+  }
+  return v;
+}
+
+// A grid dimension the UI would also accept: a huge value allocates w*h in the
+// engine and renders w*h divs, and a zero or negative one has no valid board.
+function requireBoundedInt(obj: Record<string, unknown>, field: string, where: string): number {
+  const v = requireInt(obj, field, where);
+  if (v < GRID_MIN || v > GRID_MAX) {
+    throw new Error(
+      `import failed: ${where} "${field}" must be between ${GRID_MIN} and ${GRID_MAX} (got ${v})`,
+    );
   }
   return v;
 }
@@ -117,9 +140,9 @@ function parsePlacement(v: unknown, where: string): Placement {
   };
 }
 
-// Parse and validate a layout export. `currentTypes` is the active catalog,
-// used to resolve placement types when the file doesn't ship its own.
-export function parseImportedLayout(text: string, currentTypes: ItemType[]): ImportedLayout {
+// Parse and validate a layout export against the board it will be merged into.
+// Every section is optional, so `current` supplies whatever the file omits.
+export function parseImportedLayout(text: string, current: ImportContext): ImportedLayout {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -136,8 +159,8 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
   if (raw.gridSize !== undefined) {
     if (!isRecord(raw.gridSize)) throw new Error('import failed: "gridSize" must be an object');
     out.gridSize = {
-      w: requireInt(raw.gridSize, "w", '"gridSize"'),
-      h: requireInt(raw.gridSize, "h", '"gridSize"'),
+      w: requireBoundedInt(raw.gridSize, "w", '"gridSize"'),
+      h: requireBoundedInt(raw.gridSize, "h", '"gridSize"'),
     };
   }
 
@@ -159,7 +182,6 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
     if (!Array.isArray(raw.placements))
       throw new Error('import failed: "placements" must be an array');
     out.placements = raw.placements.map((p, i) => parsePlacement(p, `placements[${i}]`));
-    const known = new Set((out.itemTypes ?? currentTypes).map(t => t.id));
     const seenIds = new Set<string>();
     for (let i = 0; i < out.placements.length; i++) {
       const p = out.placements[i];
@@ -167,11 +189,6 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
         throw new Error(`import failed: duplicate placement id "${p.id}" in placements[${i}]`);
       }
       seenIds.add(p.id);
-      if (!known.has(p.type)) {
-        throw new Error(
-          `import failed: placement "${p.id}" references unknown item type "${p.type}"`,
-        );
-      }
     }
   }
 
@@ -204,37 +221,44 @@ export function parseImportedLayout(text: string, currentTypes: ItemType[]): Imp
     out.inventory = inventory;
   }
 
-  // Full footprint validation: bounds, overlap, and disabled-cell checks.
-  // Requires gridSize; only possible once all fields are parsed so disabledCells is available.
-  if (out.gridSize && out.placements && out.placements.length > 0) {
-    const { w, h } = out.gridSize;
-    const typesById: TypesById = Object.fromEntries(
-      (out.itemTypes ?? currentTypes).map(t => [t.id, t]),
-    );
-    const disabled = new Set(out.disabledCells ?? []);
-    const occupied = new Set<string>();
-    for (let i = 0; i < out.placements.length; i++) {
-      const p = out.placements[i];
-      const cells = cellsOf(p, typesById);
-      for (const [cx, cy] of cells) {
-        if (cx < 0 || cy < 0 || cx >= w || cy >= h) {
-          throw new Error(
-            `import failed: placements[${i}] "${p.id}" footprint extends out of bounds for grid ${w}x${h}`,
-          );
-        }
-        if (occupied.has(`${cx},${cy}`)) {
-          throw new Error(
-            `import failed: placements[${i}] "${p.id}" overlaps with a previously validated placement`,
-          );
-        }
-        if (disabled.has(`${cx},${cy}`)) {
-          throw new Error(
-            `import failed: placements[${i}] "${p.id}" footprint lands on a disabled cell`,
-          );
-        }
-      }
-      for (const [cx, cy] of cells) occupied.add(`${cx},${cy}`);
+  // Validate the board the user will actually end up with. Checking only the
+  // sections the file happens to carry lets a partial import land an illegal
+  // board: itemTypes without placements can drop a type the current placements
+  // still reference, and placements without gridSize would skip these checks
+  // entirely.
+  const types = out.itemTypes ?? current.itemTypes;
+  const placements = out.placements ?? current.placements;
+  const { w, h } = out.gridSize ?? current.gridSize;
+  const disabled = new Set(out.disabledCells ?? current.disabledCells);
+  const typesById: TypesById = Object.fromEntries(types.map(t => [t.id, t]));
+  const fromFile = out.placements !== undefined;
+
+  const occupied = new Set<string>();
+  for (let i = 0; i < placements.length; i++) {
+    const p = placements[i];
+    // Index the file's own placements; the current board's have no index the
+    // user could act on, so name them for what they are.
+    const where = fromFile ? `placements[${i}] "${p.id}"` : `the current board's "${p.id}"`;
+    if (!typesById[p.type]) {
+      throw new Error(
+        `import failed: placement "${p.id}" references unknown item type "${p.type}"`,
+      );
     }
+    const cells = cellsOf(p, typesById);
+    for (const [cx, cy] of cells) {
+      if (cx < 0 || cy < 0 || cx >= w || cy >= h) {
+        throw new Error(
+          `import failed: ${where} footprint extends out of bounds for grid ${w}x${h}`,
+        );
+      }
+      if (occupied.has(`${cx},${cy}`)) {
+        throw new Error(`import failed: ${where} overlaps with a previously validated placement`);
+      }
+      if (disabled.has(`${cx},${cy}`)) {
+        throw new Error(`import failed: ${where} footprint lands on a disabled cell`);
+      }
+    }
+    for (const [cx, cy] of cells) occupied.add(`${cx},${cy}`);
   }
 
   return out;
