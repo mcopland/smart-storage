@@ -23,6 +23,8 @@ interface Harness {
   firstError: Promise<string>;
   /** Resolves the next time any progress arrives. */
   nextProgress(): Promise<OptimizerProgress>;
+  /** Resolves the next time an error arrives. Register before sending. */
+  nextError(): Promise<string>;
 }
 
 let client: OptimizerClient;
@@ -35,6 +37,7 @@ function createHarness(): Harness {
   let resolveTerminal!: (p: OptimizerProgress) => void;
   let resolveError!: (m: string) => void;
   const waiters: ((p: OptimizerProgress) => void)[] = [];
+  const errorWaiters: ((m: string) => void)[] = [];
   const terminal = new Promise<OptimizerProgress>(r => (resolveTerminal = r));
   const firstError = new Promise<string>(r => (resolveError = r));
 
@@ -46,6 +49,7 @@ function createHarness(): Harness {
     },
     onError(message) {
       errors.push(message);
+      for (const w of errorWaiters.splice(0)) w(message);
       resolveError(message);
     },
   };
@@ -55,6 +59,7 @@ function createHarness(): Harness {
     terminal,
     firstError,
     nextProgress: () => new Promise<OptimizerProgress>(r => waiters.push(r)),
+    nextError: () => new Promise<string>(r => errorWaiters.push(r)),
   };
 }
 
@@ -158,6 +163,33 @@ describe("optimizer worker protocol", () => {
     const terminal = await h.terminal;
     expect(terminal.score).toBe(2);
     expect(h.errors).toHaveLength(1);
+  });
+
+  it("posts an error for run and reseat when no session exists", async () => {
+    const h = createHarness();
+    // A failed init detaches the old session and leaves none behind.
+    client.init(
+      { ...synergyLayout, placements: [{ id: "x1", type: "ghost", x: 0, y: 0, rot: 0 }] },
+      0,
+      1_000,
+    );
+    expect(await h.firstError).toMatch(/ghost/);
+
+    // Without an error here the hook keeps optimizing=true and the button
+    // sticks on "Cancel" with nothing running behind it.
+    const runError = h.nextError();
+    client.run(5_000, 0);
+    expect(await runError).toMatch(/no session.*run|run.*no session/);
+
+    const reseatError = h.nextError();
+    client.reseat(synergyLayout);
+    expect(await reseatError).toMatch(/no session.*reseat|reseat.*no session/);
+
+    // Still recoverable: a valid init brings the worker back.
+    client.init(synergyLayout, 42, 50_000);
+    client.run(5_000, 0);
+    expect((await h.terminal).score).toBe(2);
+    expect(h.errors).toHaveLength(3);
   });
 
   it("reseat mid-session is accepted and the next run still terminates", async () => {
