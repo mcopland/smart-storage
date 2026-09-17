@@ -54,6 +54,19 @@ describe("boardSignature", () => {
     expect(boardSignature([TYPE_A, TYPE_B], [PLACEMENTS[0]], 10, 10, new Set())).not.toBe(base);
   });
 
+  it("differs when a placement id changes with the same type multiset", () => {
+    const renamed: Placement[] = [
+      { id: "q1", type: "a", x: 0, y: 0, rot: 0 },
+      { id: "q2", type: "b", x: 2, y: 0, rot: 0 },
+    ];
+    expect(boardSignature([TYPE_A, TYPE_B], renamed, 10, 10, new Set())).not.toBe(base);
+  });
+
+  it("is stable when placements are reordered", () => {
+    const reordered: Placement[] = [PLACEMENTS[1], PLACEMENTS[0]];
+    expect(boardSignature([TYPE_A, TYPE_B], reordered, 10, 10, new Set())).toBe(base);
+  });
+
   it("differs when grid size changes", () => {
     expect(boardSignature([TYPE_A, TYPE_B], PLACEMENTS, 8, 10, new Set())).not.toBe(base);
   });

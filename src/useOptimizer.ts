@@ -115,6 +115,10 @@ export function useOptimizer({
         console.error(`Optimize failed: ${message}`);
         onErrorRef.current?.(`Optimize failed: ${message}`);
         setOptimizing(false);
+        // The worker's session may be poisoned (a failed init leaves none, a
+        // failed reseat leaves a stale id set). Force a fresh init on the next
+        // board sync rather than reseating a session we can no longer trust.
+        initializedRef.current = false;
       },
     );
     clientRef.current = client;
