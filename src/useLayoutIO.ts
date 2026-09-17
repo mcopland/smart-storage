@@ -44,7 +44,12 @@ export function useLayoutIO(
         return;
       }
       try {
-        const data = parseImportedLayout(reader.result, snapshot.itemTypes);
+        const data = parseImportedLayout(reader.result, {
+          itemTypes: snapshot.itemTypes,
+          placements: snapshot.placements,
+          gridSize: snapshot.gridSize,
+          disabledCells: snapshot.disabledCells,
+        });
         onApply(data);
       } catch (err) {
         console.error(`Import failed for "${file.name}":`, err);

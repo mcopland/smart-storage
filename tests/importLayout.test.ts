@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { ITEM_TYPES } from "../src/model/catalog";
+import type { ImportContext } from "../src/model/importLayout";
 import { parseImportedLayout } from "../src/model/importLayout";
+
+// The live board an import is merged into. An import is a patch, so every
+// section the file omits falls back to this.
+function ctx(overrides: Partial<ImportContext> = {}): ImportContext {
+  return {
+    itemTypes: ITEM_TYPES,
+    placements: [],
+    gridSize: { w: 10, h: 10 },
+    disabledCells: new Set<string>(),
+    ...overrides,
+  };
+}
 
 const validLayout = {
   gridSize: { w: 8, h: 6 },
@@ -14,7 +27,7 @@ const validLayout = {
 
 describe("parseImportedLayout", () => {
   it("parses a valid layout export", () => {
-    const result = parseImportedLayout(JSON.stringify(validLayout), ITEM_TYPES);
+    const result = parseImportedLayout(JSON.stringify(validLayout), ctx());
     expect(result.gridSize).toEqual({ w: 8, h: 6 });
     expect(result.placements).toHaveLength(2);
     expect(result.disabledCells).toEqual(["3,3"]);
@@ -37,7 +50,7 @@ describe("parseImportedLayout", () => {
       ],
       placements: [{ id: "p1", type: "slab", x: 0, y: 0, rot: 0 }],
     };
-    const result = parseImportedLayout(JSON.stringify(legacy), ITEM_TYPES);
+    const result = parseImportedLayout(JSON.stringify(legacy), ctx());
     expect(result.itemTypes?.[0].cells).toEqual([
       [0, 0],
       [1, 0],
@@ -46,28 +59,28 @@ describe("parseImportedLayout", () => {
   });
 
   it("rejects malformed JSON and says so", () => {
-    expect(() => parseImportedLayout("{nope", ITEM_TYPES)).toThrowError(/not valid JSON/);
+    expect(() => parseImportedLayout("{nope", ctx())).toThrowError(/not valid JSON/);
   });
 
   it("rejects a non-object root", () => {
-    expect(() => parseImportedLayout("[1,2]", ITEM_TYPES)).toThrowError(/JSON object/);
+    expect(() => parseImportedLayout("[1,2]", ctx())).toThrowError(/JSON object/);
   });
 
   it("rejects a bad gridSize and names the field", () => {
     const bad = { ...validLayout, gridSize: { w: "wide", h: 6 } };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(/gridSize/);
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/gridSize/);
   });
 
   it("rejects a placement missing a field, naming index and field", () => {
     const bad = { placements: [{ id: "p1", type: "core", x: 0, rot: 0 }] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*"y"/,
     );
   });
 
   it("rejects placements referencing unknown item types, naming both ids", () => {
     const bad = { placements: [{ id: "p9", type: "ghost", x: 0, y: 0, rot: 0 }] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /p9.*ghost|ghost.*p9/,
     );
   });
@@ -87,20 +100,20 @@ describe("parseImportedLayout", () => {
       ],
       placements: [{ id: "p1", type: "custom", x: 0, y: 0, rot: 0 }],
     };
-    const result = parseImportedLayout(JSON.stringify(layout), ITEM_TYPES);
+    const result = parseImportedLayout(JSON.stringify(layout), ctx());
     expect(result.placements?.[0].type).toBe("custom");
   });
 
   it("rejects an itemTypes entry without an id", () => {
     const bad = { itemTypes: [{ name: "Nameless", tags: [], synergies: [], cells: [[0, 0]] }] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /itemTypes\[0\].*"id"/,
     );
   });
 
   it("rejects non-string disabledCells entries", () => {
     const bad = { disabledCells: ["1,1", 7] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /disabledCells\[1\]/,
     );
   });
@@ -109,37 +122,33 @@ describe("parseImportedLayout", () => {
 
   it("rejects fractional x in a placement", () => {
     const bad = { placements: [{ id: "p1", type: "core", x: 1.5, y: 0, rot: 0 }] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*"x"/,
     );
   });
 
   it("rejects fractional y in a placement", () => {
     const bad = { placements: [{ id: "p1", type: "core", x: 0, y: 0.9, rot: 0 }] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*"y"/,
     );
   });
 
   it("rejects fractional rot in a placement", () => {
     const bad = { placements: [{ id: "p1", type: "core", x: 0, y: 0, rot: 45.5 }] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*"rot"/,
     );
   });
 
   it("rejects fractional w in gridSize", () => {
     const bad = { ...validLayout, gridSize: { w: 8.5, h: 6 } };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
-      /"gridSize".*"w"/,
-    );
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/"gridSize".*"w"/);
   });
 
   it("rejects fractional h in gridSize", () => {
     const bad = { ...validLayout, gridSize: { w: 8, h: 6.1 } };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
-      /"gridSize".*"h"/,
-    );
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/"gridSize".*"h"/);
   });
 
   it("rejects fractional coordinates in itemType cells", () => {
@@ -157,16 +166,12 @@ describe("parseImportedLayout", () => {
       ],
       placements: [],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
-      /itemTypes\[0\]/,
-    );
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/itemTypes\[0\]/);
   });
 
   it("rejects non-integer inventory count", () => {
     const bad = { ...validLayout, inventory: { core: 2.5 } };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
-      /inventory.*"core"/,
-    );
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/inventory.*"core"/);
   });
 
   it("rejects placement x out of bounds when gridSize is known", () => {
@@ -174,7 +179,7 @@ describe("parseImportedLayout", () => {
       gridSize: { w: 4, h: 4 },
       placements: [{ id: "p1", type: "core", x: 5, y: 0, rot: 0 }],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
     );
   });
@@ -184,7 +189,7 @@ describe("parseImportedLayout", () => {
       gridSize: { w: 4, h: 4 },
       placements: [{ id: "p1", type: "core", x: 0, y: 10, rot: 0 }],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
     );
   });
@@ -194,7 +199,7 @@ describe("parseImportedLayout", () => {
       gridSize: { w: 4, h: 4 },
       placements: [{ id: "p1", type: "core", x: -1, y: 0, rot: 0 }],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
     );
   });
@@ -203,7 +208,7 @@ describe("parseImportedLayout", () => {
 
   it("rejects rot that is not a multiple of 90", () => {
     const bad = { placements: [{ id: "p1", type: "core", x: 0, y: 0, rot: 45 }] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*"rot"/,
     );
   });
@@ -215,7 +220,7 @@ describe("parseImportedLayout", () => {
       gridSize: { w: 4, h: 4 },
       placements: [{ id: "p1", type: "capacitor", x: 2, y: 0, rot: 0 }],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i,
     );
   });
@@ -228,7 +233,7 @@ describe("parseImportedLayout", () => {
         { id: "p2", type: "core", x: 0, y: 0, rot: 0 },
       ],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[1\].*overlap|overlap.*placements\[1\]/i,
     );
   });
@@ -239,7 +244,7 @@ describe("parseImportedLayout", () => {
       disabledCells: ["1,1"],
       placements: [{ id: "p1", type: "core", x: 1, y: 1, rot: 0 }],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /placements\[0\].*disabled|disabled.*placements\[0\]/i,
     );
   });
@@ -251,7 +256,7 @@ describe("parseImportedLayout", () => {
         { id: "dup", type: "relay", x: 1, y: 0, rot: 0 },
       ],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /duplicate.*placement.*id.*"dup"|placement.*id.*"dup".*duplicate/i,
     );
   });
@@ -280,15 +285,114 @@ describe("parseImportedLayout", () => {
       ],
       placements: [],
     };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /duplicate.*item.type.*id.*"dup"|item.type.*id.*"dup".*duplicate/i,
     );
   });
 
   it("rejects disabledCells keys that are not integer-pair strings", () => {
     const bad = { disabledCells: ["abc,def"] };
-    expect(() => parseImportedLayout(JSON.stringify(bad), ITEM_TYPES)).toThrowError(
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
       /disabledCells\[0\]/,
     );
+  });
+
+  // --- merged-result validation ---
+  //
+  // An import is a patch: a section the file omits keeps the current value.
+  // Validating each section against the file alone lets a partial import
+  // produce a board that no single section is responsible for.
+
+  const CURRENT_CORE = { id: "c1", type: "core", x: 0, y: 0, rot: 0 };
+
+  it("rejects itemTypes that drop a type the current board still uses", () => {
+    const file = {
+      itemTypes: [
+        {
+          id: "other",
+          name: "Other",
+          glyph: "square",
+          color: "#888",
+          tags: [],
+          synergies: [],
+          cells: [[0, 0]],
+        },
+      ],
+    };
+    expect(() =>
+      parseImportedLayout(JSON.stringify(file), ctx({ placements: [CURRENT_CORE] })),
+    ).toThrowError(/c1.*core|core.*c1/);
+  });
+
+  it("validates file placements against the current grid when gridSize is absent", () => {
+    const file = { placements: [{ id: "p1", type: "core", x: 9, y: 9, rot: 0 }] };
+    expect(() =>
+      parseImportedLayout(JSON.stringify(file), ctx({ gridSize: { w: 4, h: 4 } })),
+    ).toThrowError(/placements\[0\].*out of bounds|out of bounds.*placements\[0\]/i);
+  });
+
+  it("rejects overlapping file placements when gridSize is absent", () => {
+    const file = {
+      placements: [
+        { id: "p1", type: "core", x: 0, y: 0, rot: 0 },
+        { id: "p2", type: "core", x: 0, y: 0, rot: 0 },
+      ],
+    };
+    expect(() => parseImportedLayout(JSON.stringify(file), ctx())).toThrowError(
+      /placements\[1\].*overlap|overlap.*placements\[1\]/i,
+    );
+  });
+
+  it("rejects a gridSize that shrinks below the current board's footprint", () => {
+    const file = { gridSize: { w: 2, h: 2 } };
+    expect(() =>
+      parseImportedLayout(
+        JSON.stringify(file),
+        ctx({ placements: [{ id: "c1", type: "core", x: 5, y: 5, rot: 0 }] }),
+      ),
+    ).toThrowError(/c1.*out of bounds|out of bounds.*c1/i);
+  });
+
+  it("rejects disabledCells that land under a current placement", () => {
+    const file = { disabledCells: ["0,0"] };
+    expect(() =>
+      parseImportedLayout(JSON.stringify(file), ctx({ placements: [CURRENT_CORE] })),
+    ).toThrowError(/c1.*disabled|disabled.*c1/i);
+  });
+
+  it("accepts a partial import that stays legal against the current board", () => {
+    const file = { inventory: { core: 3 } };
+    const result = parseImportedLayout(
+      JSON.stringify(file),
+      ctx({ placements: [CURRENT_CORE], disabledCells: new Set(["9,9"]) }),
+    );
+    expect(result.inventory).toEqual({ core: 3 });
+    expect(result.placements).toBeUndefined();
+  });
+
+  // --- gridSize bounds (must match the UI's resize range) ---
+
+  it("rejects a gridSize of zero", () => {
+    const bad = { gridSize: { w: 0, h: 6 } };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/"gridSize".*"w"/);
+  });
+
+  it("rejects a negative gridSize", () => {
+    const bad = { gridSize: { w: 8, h: -6 } };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/"gridSize".*"h"/);
+  });
+
+  it("rejects a gridSize beyond the UI maximum", () => {
+    const bad = { gridSize: { w: 5000, h: 6 } };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/"gridSize".*"w"/);
+  });
+
+  it("accepts a gridSize at both ends of the allowed range", () => {
+    expect(
+      parseImportedLayout(JSON.stringify({ gridSize: { w: 2, h: 2 } }), ctx()).gridSize,
+    ).toEqual({ w: 2, h: 2 });
+    expect(
+      parseImportedLayout(JSON.stringify({ gridSize: { w: 20, h: 20 } }), ctx()).gridSize,
+    ).toEqual({ w: 20, h: 20 });
   });
 });
