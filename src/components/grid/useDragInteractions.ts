@@ -14,11 +14,15 @@ type DragState =
       kind: "move";
       ids: string[];
       origPositions: Record<string, { x: number; y: number }>;
-      anchor: { x: number; y: number };
       startPx: number;
       startPy: number;
       pointerId: number;
       moved: boolean;
+      // Grid step of the last committed frame, so a pointer that moves within
+      // one cell doesn't rewrite identical placements. null until the first
+      // commit.
+      lastDx: number | null;
+      lastDy: number | null;
       wasAlreadySelected: boolean;
       clickedId: string;
     }
@@ -91,11 +95,12 @@ export function useDragInteractions({
       kind: "move",
       ids: idsToMove,
       origPositions: Object.fromEntries(moving.map(q => [q.id, { x: q.x, y: q.y }])),
-      anchor: { x: p.x, y: p.y },
       startPx,
       startPy,
       pointerId: e.pointerId,
       moved: false,
+      lastDx: null,
+      lastDy: null,
       wasAlreadySelected,
       clickedId: p.id,
     };
@@ -159,11 +164,15 @@ export function useDragInteractions({
       return;
     }
     if (dragState.current.kind === "move") {
-      const { startPx, startPy, ids, origPositions } = dragState.current;
+      const { startPx, startPy, ids, origPositions, lastDx, lastDy } = dragState.current;
       const { px, py } = cellAt(e.clientX, e.clientY);
       const dx = Math.round((px - startPx) / (cell + gap));
       const dy = Math.round((py - startPy) / (cell + gap));
       if (dx === 0 && dy === 0 && !dragState.current.moved) return;
+      // Pointer is still on the same grid step as the last committed frame.
+      // Rewriting identical placements would re-render the board and, through
+      // useOptimizer's sync effect, post a worker reseat per pointermove.
+      if (dx === lastDx && dy === lastDy) return;
       dragState.current.moved = true;
       const proposed = placements.map(p => {
         if (!ids.includes(p.id)) return p;
@@ -177,7 +186,13 @@ export function useDragInteractions({
         p =>
           !movingIds.has(p.id) || fits(p, proposed, gridW, gridH, p.id, disabledCells, typesById),
       );
-      if (ok) setPlacements(proposed);
+      // Only a committed frame advances the step, so a rejected one is retried
+      // if the pointer stays put.
+      if (ok) {
+        dragState.current.lastDx = dx;
+        dragState.current.lastDy = dy;
+        setPlacements(proposed);
+      }
     }
   };
 
