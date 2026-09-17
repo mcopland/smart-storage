@@ -30,6 +30,16 @@ const PROGRESS_MIN_INTERVAL_MS = 33;
 let session: OptimizerSession | null = null;
 let running = false;
 
+// `run` and `reseat` are meaningless without a session, and the main thread has
+// already flipped `optimizing` on by the time `run` arrives -- going quiet here
+// leaves the button stuck on "Cancel" with nothing behind it.
+function postNoSession(type: WorkerIncoming["type"]): void {
+  postMessage({
+    type: "error",
+    message: `optimizer worker: no session for "${type}"; init failed or was never sent`,
+  } satisfies WorkerOutgoing);
+}
+
 // Assigned via `self` (identical in a real worker) so test shims that only
 // intercept properties of the worker global scope observe the handler.
 self.onmessage = async (e: MessageEvent<WorkerIncoming>) => {
@@ -50,7 +60,11 @@ self.onmessage = async (e: MessageEvent<WorkerIncoming>) => {
     }
 
     if (msg.type === "reseat") {
-      session?.reseat(msg.layout);
+      if (!session) {
+        postNoSession(msg.type);
+        return;
+      }
+      session.reseat(msg.layout);
       return;
     }
 
@@ -60,7 +74,10 @@ self.onmessage = async (e: MessageEvent<WorkerIncoming>) => {
     }
 
     if (msg.type === "run") {
-      if (!session) return;
+      if (!session) {
+        postNoSession(msg.type);
+        return;
+      }
       running = true;
       session.restart_run();
       const { chunkIters, chunkDelayMs } = msg;
