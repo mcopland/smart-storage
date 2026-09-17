@@ -168,6 +168,46 @@ describe("session sync: init vs reseat", () => {
     expect(result.current.bestLayouts).toEqual([]);
   });
 
+  it("re-inits when placement ids change with the same composition", () => {
+    const { rerender } = renderOptimizer();
+    // Same types, same positions, new ids: a delete-and-re-add or an import.
+    // The session keys placements by id, so reseating would fail.
+    rerender({
+      placements: [
+        { id: "q0", type: "a", x: 0, y: 0, rot: 0 },
+        { id: "q1", type: "b", x: 4, y: 0, rot: 0 },
+      ],
+      itemTypes,
+      gridW: 5,
+      gridH: 1,
+      disabledCells: new Set<string>(),
+    });
+    expect(mock.client.init).toHaveBeenCalledTimes(2);
+    expect(mock.client.reseat).not.toHaveBeenCalled();
+  });
+
+  it("re-inits on the next board change after a worker error", () => {
+    const { rerender } = renderOptimizer();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    act(() => mock.callbacks.onError('reseat: placement "p0" missing from new layout'));
+    consoleError.mockRestore();
+
+    // A move alone would normally reseat; after an error the session is
+    // untrustworthy, so it must be replaced.
+    rerender({
+      placements: [
+        { id: "p0", type: "a", x: 1, y: 0, rot: 0 },
+        { id: "p1", type: "b", x: 3, y: 0, rot: 0 },
+      ],
+      itemTypes,
+      gridW: 5,
+      gridH: 1,
+      disabledCells: new Set<string>(),
+    });
+    expect(mock.client.init).toHaveBeenCalledTimes(2);
+    expect(mock.client.reseat).not.toHaveBeenCalled();
+  });
+
   it("neither inits nor reseats while a run is in progress", () => {
     const { result, rerender } = renderOptimizer();
     act(() => result.current.onOptimize());

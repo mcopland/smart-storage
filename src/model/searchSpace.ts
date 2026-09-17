@@ -1,9 +1,13 @@
 import type { ItemType, Placement } from "./types";
 
 // Stable signature for the board's scoring-relevant composition. Stable under
-// position/rotation changes; changes when the type multiset, grid size,
-// disabled cells, or any placed type's cells/tags/synergies change. Used to
-// decide whether to reset the visited set (init) or just reseat.
+// position/rotation changes; changes when the type multiset, placement ids,
+// grid size, disabled cells, or any placed type's cells/tags/synergies change.
+// Used to decide whether to reset the visited set (init) or just reseat.
+//
+// Placement ids are part of the signature because the optimizer session keys
+// its placements by id: reseating a layout whose ids it has never seen fails,
+// and the session would keep driving the board with its stale id set.
 export function boardSignature(
   itemTypes: ItemType[],
   placements: Placement[],
@@ -16,6 +20,12 @@ export function boardSignature(
   // Sorted multiset of placed type ids.
   const typeMultiset = placements
     .map(p => p.type)
+    .sort()
+    .join(",");
+
+  // Sorted placement ids: order-independent, so a reorder alone is not a change.
+  const ids = placements
+    .map(p => p.id)
     .sort()
     .join(",");
 
@@ -37,5 +47,5 @@ export function boardSignature(
     })
     .join(";");
 
-  return `${typeMultiset}|${grid}|${disabled}|${typeDefs}`;
+  return `${typeMultiset}|${grid}|${disabled}|${typeDefs}|${ids}`;
 }
