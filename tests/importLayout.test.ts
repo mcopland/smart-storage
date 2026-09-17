@@ -297,6 +297,85 @@ describe("parseImportedLayout", () => {
     );
   });
 
+  // --- malformed input is rejected, not silently dropped ---
+
+  function typeWith(fields: Record<string, unknown>) {
+    return {
+      itemTypes: [
+        {
+          id: "t",
+          name: "T",
+          glyph: "square",
+          color: "#888",
+          tags: [],
+          synergies: [],
+          cells: [[0, 0]],
+          ...fields,
+        },
+      ],
+    };
+  }
+
+  it("rejects a negative inventory count, naming the key", () => {
+    const bad = { inventory: { core: -1 } };
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(/inventory.*"core"/);
+  });
+
+  it("rejects duplicate cells in an item type, naming the index", () => {
+    const bad = typeWith({
+      cells: [
+        [0, 0],
+        [1, 0],
+        [0, 0],
+      ],
+    });
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
+      /itemTypes\[0\].*cells\[2\]|cells\[2\].*itemTypes\[0\]/,
+    );
+  });
+
+  it("rejects negative cell offsets in an item type", () => {
+    const bad = typeWith({
+      cells: [
+        [0, 0],
+        [-1, 0],
+      ],
+    });
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
+      /itemTypes\[0\].*cells\[1\]|cells\[1\].*itemTypes\[0\]/,
+    );
+  });
+
+  it("rejects a non-string tag instead of dropping it, naming the index", () => {
+    const bad = typeWith({ tags: ["ok", 7] });
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
+      /itemTypes\[0\].*tags\[1\]|tags\[1\].*itemTypes\[0\]/,
+    );
+  });
+
+  it("rejects a synergy without a string tag instead of dropping it", () => {
+    const bad = typeWith({ synergies: [{ tag: "x", positive: true }, { positive: false }] });
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
+      /itemTypes\[0\].*synergies\[1\]|synergies\[1\].*itemTypes\[0\]/,
+    );
+  });
+
+  it("rejects a non-array tags field instead of coercing it to empty", () => {
+    const bad = typeWith({ tags: "power" });
+    expect(() => parseImportedLayout(JSON.stringify(bad), ctx())).toThrowError(
+      /itemTypes\[0\].*"tags"/,
+    );
+  });
+
+  it("still accepts an item type that omits tags and synergies entirely", () => {
+    const file = {
+      itemTypes: [{ id: "bare", name: "Bare", glyph: "square", color: "#888", cells: [[0, 0]] }],
+    };
+    const result = parseImportedLayout(JSON.stringify(file), ctx());
+    expect(result.itemTypes?.[0].tags).toEqual([]);
+    expect(result.itemTypes?.[0].synergies).toEqual([]);
+  });
+
   // --- merged-result validation ---
   //
   // An import is a patch: a section the file omits keeps the current value.
