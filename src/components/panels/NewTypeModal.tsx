@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { COLOR_NAMES, getNextAvailableCombo, GLYPH_NAMES, type Combo } from "../../model/catalog";
+import { newTypeId } from "../../model/ids";
 import type { Cell, ItemType } from "../../model/types";
 import { ShapePaintGrid, normalizeCells } from "./ShapePaintGrid";
 import { btnStyle } from "./styles";
@@ -62,9 +63,10 @@ export function NewTypeModal({ onClose, onCreate, theme, itemTypes }: NewTypeMod
 
   const submit = () => {
     if (cells.length === 0) return;
-    const id =
-      (name.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "type_")
-      + Date.now().toString(36).slice(-3);
+    const id = newTypeId(
+      name,
+      itemTypes.map(t => t.id),
+    );
     onCreate(
       {
         id,
