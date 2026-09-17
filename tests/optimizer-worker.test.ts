@@ -165,6 +165,32 @@ describe("optimizer worker protocol", () => {
     expect(h.errors).toHaveLength(1);
   });
 
+  it("a second run supersedes the first: only one terminal message", async () => {
+    const h = createHarness();
+    // Dots never certify and won't stall in a few chunks, so both loops are
+    // still live when the pause lands -- unlike synergyLayout, which each run
+    // would finish outright.
+    const dots = dotLayout(
+      6,
+      6,
+      Array.from({ length: 6 }, (_, i): [number, number] => [i, 0]),
+    );
+    client.init(dots, 11, 1_000_000);
+    // Optimize / Cancel / Optimize in quick succession. The second loop must
+    // retire the first rather than step the same session alongside it, or both
+    // post a terminal snapshot for one user-visible run.
+    client.run(50, 1);
+    client.run(50, 1);
+    client.pause();
+
+    await h.terminal;
+    // Give any superseded loop that is still alive a chance to post.
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    expect(h.progresses.filter(p => p.done)).toHaveLength(1);
+    expect(h.errors).toEqual([]);
+  });
+
   it("posts an error for run and reseat when no session exists", async () => {
     const h = createHarness();
     // A failed init detaches the old session and leaves none behind.
