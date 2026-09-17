@@ -1,6 +1,6 @@
 import { cellsOf } from "./geometry";
 import { GRID_MAX, GRID_MIN } from "./gridBounds";
-import type { Cell, GridSize, Inventory, ItemType, Placement, TypesById } from "./types";
+import type { Cell, GridSize, Inventory, ItemType, Placement, Synergy, TypesById } from "./types";
 
 export interface ImportedLayout {
   gridSize?: GridSize;
@@ -64,6 +64,7 @@ function parseCells(v: unknown, where: string): Cell[] {
   if (!Array.isArray(v)) {
     throw new Error(`import failed: ${where} "cells" must be an array of [x, y] pairs`);
   }
+  const seen = new Set<string>();
   return v.map((c, i) => {
     if (
       !Array.isArray(c)
@@ -75,6 +76,18 @@ function parseCells(v: unknown, where: string): Cell[] {
     ) {
       throw new Error(`import failed: ${where} cells[${i}] must be an [x, y] integer pair`);
     }
+    // Shapes are stored normalized to the origin, so a negative offset would
+    // put part of the footprint outside the placement's own anchor.
+    if (c[0] < 0 || c[1] < 0) {
+      throw new Error(
+        `import failed: ${where} cells[${i}] must not be negative (got [${c[0]}, ${c[1]}])`,
+      );
+    }
+    const key = `${c[0]},${c[1]}`;
+    if (seen.has(key)) {
+      throw new Error(`import failed: ${where} cells[${i}] repeats the cell [${key}]`);
+    }
+    seen.add(key);
     return [c[0], c[1]];
   });
 }
@@ -96,19 +109,38 @@ function legacySizeToCells(size: unknown, where: string): Cell[] {
   return cells;
 }
 
+// An absent tags/synergies list is a legitimate item type; a malformed one is a
+// broken file. Dropping the bad entries would import a type that silently
+// scores differently from the one the file describes.
+function parseTags(v: unknown, where: string): string[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) throw new Error(`import failed: ${where} "tags" must be an array`);
+  return v.map((t, i) => {
+    if (typeof t !== "string") {
+      throw new Error(`import failed: ${where} tags[${i}] must be a string`);
+    }
+    return t;
+  });
+}
+
+function parseSynergies(v: unknown, where: string): Synergy[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) throw new Error(`import failed: ${where} "synergies" must be an array`);
+  return v.map((s, i) => {
+    if (!isRecord(s) || typeof s.tag !== "string" || s.tag.length === 0) {
+      throw new Error(
+        `import failed: ${where} synergies[${i}] is missing a non-empty string "tag"`,
+      );
+    }
+    return { tag: s.tag, positive: s.positive !== false };
+  });
+}
+
 function parseItemType(v: unknown, where: string): ItemType {
   if (!isRecord(v)) throw new Error(`import failed: ${where} must be an object`);
   const id = requireString(v, "id", where);
-  const tags = Array.isArray(v.tags)
-    ? v.tags.filter((t): t is string => typeof t === "string")
-    : [];
-  const synergies = Array.isArray(v.synergies)
-    ? v.synergies.flatMap(s =>
-        isRecord(s) && typeof s.tag === "string"
-          ? [{ tag: s.tag, positive: s.positive !== false }]
-          : [],
-      )
-    : [];
+  const tags = parseTags(v.tags, where);
+  const synergies = parseSynergies(v.synergies, where);
   const cells =
     Array.isArray(v.cells) && v.cells.length > 0
       ? parseCells(v.cells, where)
@@ -215,6 +247,11 @@ export function parseImportedLayout(text: string, current: ImportContext): Impor
     for (const [k, v] of Object.entries(raw.inventory)) {
       if (typeof v !== "number" || !Number.isFinite(v) || !Number.isInteger(v)) {
         throw new Error(`import failed: inventory count for "${k}" must be an integer`);
+      }
+      if (v < 0) {
+        throw new Error(
+          `import failed: inventory count for "${k}" must not be negative (got ${v})`,
+        );
       }
       inventory[k] = v;
     }
