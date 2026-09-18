@@ -155,7 +155,14 @@ export function ScorePanel({
                 color: provablyOptimal ? ACCENT : fgFaint,
               }}
             >
-              {provablyOptimal ? "provably optimal" : `ceiling ${upperBound}`}
+              {/* A zero ceiling is certified like any other, but "provably
+                  optimal" would read as praise for a board where no
+                  arrangement can score at all. */}
+              {provablyOptimal
+                ? upperBound === 0
+                  ? "no synergies possible"
+                  : "provably optimal"
+                : `ceiling ${upperBound}`}
             </div>
           )}
         </div>
