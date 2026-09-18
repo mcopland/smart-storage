@@ -1,6 +1,5 @@
 import { useRef } from "react";
 import { canCreateNewObject, MAX_OBJECT_TYPES } from "../../model/catalog";
-import { getTypeSize } from "../../model/geometry";
 import type { Inventory, ItemType } from "../../model/types";
 import { Glyph } from "../Glyph";
 import { ACCENT } from "./styles";
@@ -129,9 +128,8 @@ export function Tray({
         {itemTypes.map(tt => {
           const count = inventory[tt.id] ?? 0;
           const disabled = count <= 0;
-          const [w, h] = getTypeSize(tt);
           const isSel = selectedTypeId === tt.id;
-          const numCells = tt.cells ? tt.cells.length : w * h;
+          const numCells = tt.cells.length;
           return (
             <div
               key={tt.id}

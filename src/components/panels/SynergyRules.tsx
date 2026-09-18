@@ -24,12 +24,11 @@ export function SynergyRules({
   const inputBg = isWarm ? "rgba(255,253,247,0.6)" : "rgba(255,255,255,0.03)";
   const accent = ACCENT;
   const danger = DANGER;
-  const rules = synergies || [];
 
   const setRule = (i: number, patch: Partial<Synergy>) =>
-    onChange(rules.map((r, k) => (k === i ? { ...r, ...patch } : r)));
-  const removeRule = (i: number) => onChange(rules.filter((_, k) => k !== i));
-  const addRule = () => onChange([...rules, { tag: "", positive: true }]);
+    onChange(synergies.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+  const removeRule = (i: number) => onChange(synergies.filter((_, k) => k !== i));
+  const addRule = () => onChange([...synergies, { tag: "", positive: true }]);
 
   const dlId = useId();
   const fieldBase: CSSProperties = {
@@ -48,7 +47,7 @@ export function SynergyRules({
           <option key={s} value={s} />
         ))}
       </datalist>
-      {rules.length === 0 ? (
+      {synergies.length === 0 ? (
         <div
           style={{
             padding: "12px 10px",
@@ -64,7 +63,7 @@ export function SynergyRules({
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-          {rules.map((r, i) => {
+          {synergies.map((r, i) => {
             const positive = r.positive !== false;
             return (
               <div

@@ -79,7 +79,7 @@ export function SelectedEditor({
   // Suggest tags already defined anywhere in the catalog.
   const allTags = useMemo(() => {
     const set = new Set<string>();
-    for (const tt of allTypes || []) for (const tg of tt.tags || []) set.add(tg);
+    for (const tt of allTypes) for (const tg of tt.tags) set.add(tg);
     return Array.from(set).sort();
   }, [allTypes]);
 
@@ -193,7 +193,7 @@ export function SelectedEditor({
         >
           <span>Edit shape grid</span>
           <span style={{ color: fgDim, font: '11px/1 "JetBrains Mono", monospace' }}>
-            {itemType.cells?.length || 1} cells
+            {itemType.cells.length} cells
           </span>
         </button>
       </div>
