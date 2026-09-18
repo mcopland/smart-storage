@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use engine::anneal::OptimizerSession;
+use engine::error::EngineError;
 use engine::model::Layout;
 use engine::score::calc_score;
 
@@ -137,9 +138,12 @@ fn unknown_item_type_is_rejected_at_construction() {
     let err = OptimizerSession::new(&layout, 0, 1_000)
         .err()
         .expect("constructing a session with an unknown item type must fail");
-    assert!(
-        err.contains("ghost"),
-        "error should name the unknown type, got: {err}"
+    assert_eq!(
+        err,
+        EngineError::UnknownItemType {
+            type_id: "ghost".to_string(),
+            placement_id: layout.placements[0].id.clone(),
+        }
     );
 }
 
@@ -265,8 +269,14 @@ fn reseat_rejects_wrong_composition() {
     let mut layout = load_layout("score-default.json");
     let mut session = OptimizerSession::new(&layout, 0, 1_000).expect("session");
     // Drop a placement so the composition no longer matches.
-    layout.placements.pop();
-    session
+    let dropped = layout.placements.pop().expect("layout has placements");
+    let err = session
         .reseat(&layout)
         .expect_err("reseat must fail when a placement id is missing");
+    assert_eq!(
+        err,
+        EngineError::ReseatMissingPlacement {
+            placement_id: dropped.id,
+        }
+    );
 }

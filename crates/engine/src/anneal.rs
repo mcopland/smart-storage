@@ -25,6 +25,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 
+use crate::error::EngineError;
 use crate::model::{rotate_cells, Cell, ItemType, Layout, Placement};
 use crate::score::{calc_score, tag_synergy};
 
@@ -270,13 +271,17 @@ fn build_synergy_matrices(item_types: &[ItemType]) -> (Vec<Vec<i32>>, Vec<Vec<i3
 /// Parse `"x,y"` disabled-cell keys into a row-major mask. Malformed keys are
 /// an error; keys outside the grid are silently ignored (the UI can hold
 /// disabled cells that a shrink pushed out of range).
-fn parse_disabled_cells(keys: &[String], grid_w: i32, grid_h: i32) -> Result<Vec<bool>, String> {
+fn parse_disabled_cells(
+    keys: &[String],
+    grid_w: i32,
+    grid_h: i32,
+) -> Result<Vec<bool>, EngineError> {
     let mut disabled = vec![false; (grid_w * grid_h) as usize];
     for key in keys {
         let (x, y) = key
             .split_once(',')
             .and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?)))
-            .ok_or_else(|| format!("optimizer: malformed disabled cell key \"{key}\""))?;
+            .ok_or_else(|| EngineError::MalformedDisabledCell(key.clone()))?;
         if x >= 0 && y >= 0 && x < grid_w && y < grid_h {
             disabled[(y * grid_w + x) as usize] = true;
         }
@@ -334,12 +339,12 @@ impl OptimizerSession {
     /// Build a session from a legal layout. Errors on an invalid grid,
     /// unknown item types, malformed disabled-cell keys, or placements that
     /// overlap or fall outside the grid.
-    pub fn new(layout: &Layout, seed: u32, total_iters: u32) -> Result<Self, String> {
+    pub fn new(layout: &Layout, seed: u32, total_iters: u32) -> Result<Self, EngineError> {
         if layout.grid_w <= 0 || layout.grid_h <= 0 {
-            return Err(format!(
-                "optimizer: invalid grid size {}x{}",
-                layout.grid_w, layout.grid_h
-            ));
+            return Err(EngineError::InvalidGrid {
+                w: layout.grid_w,
+                h: layout.grid_h,
+            });
         }
         let type_index: std::collections::HashMap<&str, usize> = layout
             .item_types
@@ -357,10 +362,10 @@ impl OptimizerSession {
         let mut cur = Vec::with_capacity(layout.placements.len());
         for p in &layout.placements {
             let ti = *type_index.get(p.type_id.as_str()).ok_or_else(|| {
-                format!(
-                    "optimizer: unknown item type \"{}\" for placement \"{}\"",
-                    p.type_id, p.id
-                )
+                EngineError::UnknownItemType {
+                    type_id: p.type_id.clone(),
+                    placement_id: p.id.clone(),
+                }
             })?;
             ids.push(p.id.clone());
             type_ids.push(p.type_id.clone());
@@ -372,10 +377,7 @@ impl OptimizerSession {
             });
         }
         if cur.len() > u16::MAX as usize {
-            return Err(format!(
-                "optimizer: too many placements ({}); the occupancy grid indexes with u16",
-                cur.len()
-            ));
+            return Err(EngineError::TooManyPlacements(cur.len()));
         }
 
         let size = (layout.grid_w * layout.grid_h) as usize;
@@ -384,7 +386,7 @@ impl OptimizerSession {
         let perimeters = shape_perimeters(&layout.item_types);
         let upper_bound = compute_upper_bound(&item_type, &perimeters, &syn2);
 
-        let initial_score = calc_score(layout).map_err(|e| e.to_string())?.total;
+        let initial_score = calc_score(layout)?.total;
         let mut session = OptimizerSession {
             grid_w: layout.grid_w,
             grid_h: layout.grid_h,
@@ -416,10 +418,9 @@ impl OptimizerSession {
         for i in 0..session.cur.len() {
             let pose = session.cur[i];
             if !session.fits_at(i, &pose) {
-                return Err(format!(
-                    "optimizer: initial placement \"{}\" is out of bounds or overlaps",
-                    session.ids[i]
-                ));
+                return Err(EngineError::IllegalPlacement {
+                    placement_id: session.ids[i].clone(),
+                });
             }
             session.insert(i, &pose);
         }
@@ -511,7 +512,7 @@ impl OptimizerSession {
     /// Update the current layout from an external source (e.g. a manual move in
     /// the UI), keeping the visited set intact. The new layout must have the same
     /// set of placement ids; returns an error otherwise.
-    pub fn reseat(&mut self, layout: &Layout) -> Result<(), String> {
+    pub fn reseat(&mut self, layout: &Layout) -> Result<(), EngineError> {
         let by_id: std::collections::HashMap<&str, &Placement> = layout
             .placements
             .iter()
@@ -523,7 +524,9 @@ impl OptimizerSession {
         for id in &self.ids {
             let p = by_id
                 .get(id.as_str())
-                .ok_or_else(|| format!("reseat: placement \"{id}\" missing from new layout"))?;
+                .ok_or_else(|| EngineError::ReseatMissingPlacement {
+                    placement_id: id.clone(),
+                })?;
             new_cur.push(Pose {
                 x: p.x,
                 y: p.y,
@@ -535,16 +538,15 @@ impl OptimizerSession {
         self.occ.fill(None);
         for (i, &pose) in new_cur.iter().enumerate() {
             if !self.fits_at(i, &pose) {
-                return Err(format!(
-                    "reseat: placement \"{}\" is out of bounds or overlaps",
-                    self.ids[i]
-                ));
+                return Err(EngineError::IllegalPlacement {
+                    placement_id: self.ids[i].clone(),
+                });
             }
             self.insert(i, &pose);
         }
 
         self.cur = new_cur;
-        self.cur_score = calc_score(layout).map_err(|e| e.to_string())?.total;
+        self.cur_score = calc_score(layout)?.total;
 
         // Record the new position in the visited set (adjacency fp) and update
         // best/best_layouts (composition fp computed inside record_best).
@@ -565,7 +567,7 @@ impl OptimizerSession {
     /// Best score reached by accepting every legal random relocation (the
     /// spirit of the prototype's shuffle-and-jitter optimizer). Used as a
     /// quality baseline in tests.
-    pub fn random_baseline(layout: &Layout, seed: u32, iters: u32) -> Result<i32, String> {
+    pub fn random_baseline(layout: &Layout, seed: u32, iters: u32) -> Result<i32, EngineError> {
         let mut s = Self::new(layout, seed, iters)?;
         if s.cur.is_empty() {
             return Ok(s.best_score);
@@ -964,10 +966,7 @@ mod tests {
     fn parse_disabled_cells_rejects_malformed_keys() {
         let err = parse_disabled_cells(&["nope".to_string()], 3, 3)
             .expect_err("a malformed key must error");
-        assert!(
-            err.contains("nope"),
-            "error should name the key, got: {err}"
-        );
+        assert_eq!(err, EngineError::MalformedDisabledCell("nope".to_string()));
     }
 
     #[test]
