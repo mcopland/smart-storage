@@ -6,6 +6,7 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use crate::anneal::OptimizerSession;
+use crate::error::EngineError;
 use crate::model::Layout;
 use crate::score::calc_score;
 
@@ -52,6 +53,12 @@ export interface EngineProgress {
 }
 "#;
 
+// Engine errors carry no prefix of their own, so the boundary names the call
+// that produced them: the message goes straight to a UI notice.
+fn engine_err(context: &str, err: &EngineError) -> JsValue {
+    JsValue::from_str(&format!("{context}: {err}"))
+}
+
 /// Score a layout (the app's JSON wire format) and return the total plus the
 /// per-item breakdown.
 #[wasm_bindgen(unchecked_return_type = "EngineScoreResult")]
@@ -59,7 +66,7 @@ pub fn score(layout: JsValue) -> Result<JsValue, JsValue> {
     let layout: Layout = serde_wasm_bindgen::from_value(layout)
         .map_err(|e| JsValue::from_str(&format!("score: failed to parse layout: {e}")))?;
     calc_score(&layout)
-        .map_err(|e| JsValue::from_str(&format!("score: {e}")))?
+        .map_err(|e| engine_err("score", &e))?
         .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|e| JsValue::from_str(&format!("score: failed to serialize result: {e}")))
 }
@@ -77,8 +84,8 @@ impl Optimizer {
     pub fn new(layout: JsValue, seed: u32, total_iters: u32) -> Result<Optimizer, JsValue> {
         let layout: Layout = serde_wasm_bindgen::from_value(layout)
             .map_err(|e| JsValue::from_str(&format!("optimizer: failed to parse layout: {e}")))?;
-        let session =
-            OptimizerSession::new(&layout, seed, total_iters).map_err(|e| JsValue::from_str(&e))?;
+        let session = OptimizerSession::new(&layout, seed, total_iters)
+            .map_err(|e| engine_err("optimizer", &e))?;
         Ok(Optimizer { session })
     }
 
@@ -101,7 +108,7 @@ impl Optimizer {
         })?;
         self.session
             .reseat(&layout)
-            .map_err(|e| JsValue::from_str(&e))
+            .map_err(|e| engine_err("optimizer reseat", &e))
     }
 
     /// Reset per-run counters (temperature, stagnation, run-visited count) so
