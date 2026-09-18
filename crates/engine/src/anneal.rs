@@ -444,9 +444,12 @@ impl OptimizerSession {
 
     /// Run up to `n` more iterations; returns the best layout found so far.
     pub fn step(&mut self, n: u32) -> Progress {
-        // Empty layout or bound already achieved (meaningful only when > 0,
-        // so zero-synergy layouts with upper_bound=0 run normally).
-        let already_optimal = self.upper_bound > 0 && self.best_score >= self.upper_bound;
+        // Empty layout or bound already achieved. A zero bound is a real bound
+        // -- compute_upper_bound returns 0 only when no pair of placed items can
+        // score at all -- so a board sitting at 0 with a zero bound is optimal
+        // and must not burn the whole budget proving it. A board that can score
+        // negative stays below the bound and keeps running.
+        let already_optimal = self.best_score >= self.upper_bound;
         if self.cur.is_empty() || already_optimal {
             self.iter = self.total_iters;
         }
@@ -461,9 +464,9 @@ impl OptimizerSession {
             self.try_random_move(t);
             if self.best_score > improved_before {
                 self.since_improve = 0;
-                // Provably optimal: non-trivial bound reached mid-step. Break
-                // without inflating iter to total_iters so iters_done is honest.
-                if self.upper_bound > 0 && self.best_score >= self.upper_bound {
+                // Provably optimal: bound reached mid-step. Break without
+                // inflating iter to total_iters so iters_done is honest.
+                if self.best_score >= self.upper_bound {
                     break;
                 }
             } else {
@@ -484,7 +487,7 @@ impl OptimizerSession {
             adjacency_fp(&self.cur, &self.item_type, &self.rotations),
             "cur_fp diverged from a from-scratch adjacency_fp recompute"
         );
-        let provably_optimal = self.upper_bound > 0 && self.best_score >= self.upper_bound;
+        let provably_optimal = self.best_score >= self.upper_bound;
         let done = self.iter >= self.total_iters || provably_optimal;
         Progress {
             placements: self.poses_to_placements(&self.best),
@@ -1601,32 +1604,20 @@ mod tests {
     /// a 50k-iteration budget cannot exhaust it, making it suitable for stall and
     /// cross-run growth tests.
     fn diverse_layout() -> Layout {
-        let item_types = vec![
-            ItemType {
-                id: "a".to_string(),
-                tags: vec![],
-                synergies: vec![],
-                cells: vec![(0, 0)],
-            },
-            ItemType {
-                id: "b".to_string(),
-                tags: vec![],
-                synergies: vec![],
-                cells: vec![(0, 0)],
-            },
-            ItemType {
-                id: "c".to_string(),
-                tags: vec![],
-                synergies: vec![],
-                cells: vec![(0, 0)],
-            },
-            ItemType {
-                id: "d".to_string(),
-                tags: vec![],
-                synergies: vec![],
-                cells: vec![(0, 0)],
-            },
-        ];
+        // Four distinct types, so the connection space (type-pair multisets) is
+        // large. They share a mutual positive synergy purely so the upper bound
+        // is positive and far above what 8 unit cells can actually reach -- a
+        // zero bound would certify on the first step and end the run.
+        let mk_type = |id: &str| ItemType {
+            id: id.to_string(),
+            tags: vec!["x".to_string()],
+            synergies: vec![crate::model::Synergy {
+                tag: "x".to_string(),
+                positive: Some(true),
+            }],
+            cells: vec![(0, 0)],
+        };
+        let item_types = vec![mk_type("a"), mk_type("b"), mk_type("c"), mk_type("d")];
         let placements = vec![
             Placement {
                 id: "p0".to_string(),
@@ -1996,6 +1987,71 @@ mod tests {
             progress.iters_done < 500_000,
             "must halt early before full budget: iters_done={}",
             progress.iters_done
+        );
+    }
+
+    #[test]
+    fn step_certifies_a_zero_upper_bound() {
+        // Tag-less dots can never score above 0, and compute_upper_bound says so.
+        // A zero bound is a real bound, not a "no bound known" sentinel: the run
+        // must certify immediately instead of burning the whole budget.
+        let layout = dot_layout(6, 6, 4);
+        let mut session = OptimizerSession::new(&layout, 3, 500_000).expect("session");
+        assert_eq!(session.upper_bound, 0, "tag-less dots can never score");
+
+        let progress = session.step(5_000);
+        assert!(
+            progress.provably_optimal,
+            "a board whose best possible score is 0, already at 0, is optimal"
+        );
+        assert!(progress.done, "certifying must end the run");
+        assert_eq!(progress.score, 0);
+    }
+
+    #[test]
+    fn step_does_not_certify_a_zero_bound_while_the_score_is_negative() {
+        // Two mutually repelling items on a 1x2 grid: the bound is 0 (no positive
+        // synergy exists) but they start adjacent at -2 and cannot separate, so
+        // best_score stays below the bound and the run is not certified.
+        let repel = |id: &str| ItemType {
+            id: id.to_string(),
+            tags: vec!["x".to_string()],
+            synergies: vec![crate::model::Synergy {
+                tag: "x".to_string(),
+                positive: Some(false),
+            }],
+            cells: vec![(0, 0)],
+        };
+        let layout = Layout {
+            item_types: vec![repel("a"), repel("b")],
+            grid_w: 2,
+            grid_h: 1,
+            disabled_cells: vec![],
+            placements: vec![
+                Placement {
+                    id: "p0".to_string(),
+                    type_id: "a".to_string(),
+                    x: 0,
+                    y: 0,
+                    rot: 0,
+                },
+                Placement {
+                    id: "p1".to_string(),
+                    type_id: "b".to_string(),
+                    x: 1,
+                    y: 0,
+                    rot: 0,
+                },
+            ],
+        };
+        let mut session = OptimizerSession::new(&layout, 5, 1_000).expect("session");
+        assert_eq!(session.upper_bound, 0, "no positive synergy exists");
+
+        let progress = session.step(10);
+        assert!(progress.score < 0, "the items cannot avoid each other");
+        assert!(
+            !progress.provably_optimal,
+            "a score below the bound must not be certified"
         );
     }
 

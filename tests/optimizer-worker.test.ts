@@ -12,7 +12,7 @@ import "@vitest/web-worker";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createOptimizerClient, type OptimizerClient } from "../src/engine/optimizer";
 import type { OptimizerProgress } from "../src/engine/optimizerSession";
-import { dotLayout, initEngineFromDisk, synergyLayout } from "./helpers";
+import { clusterLayout, dotLayout, initEngineFromDisk, synergyLayout } from "./helpers";
 
 interface Harness {
   progresses: OptimizerProgress[];
@@ -104,14 +104,15 @@ describe("optimizer worker protocol", () => {
 
   it("restarts on budget exhaustion, forcing done: false until a real stop", async () => {
     const h = createHarness();
-    // 6 free-floating dots on 6x6: no synergies, so never provably optimal,
-    // and far too many distinct layouts to stall within a few tiny budgets.
-    const dots = dotLayout(
+    // 6 free-floating items on 6x6 whose upper bound is unreachable, so the run
+    // never certifies, with far too many distinct layouts to stall within a few
+    // tiny budgets.
+    const spread = clusterLayout(
       6,
       6,
       Array.from({ length: 6 }, (_, i): [number, number] => [i, 0]),
     );
-    client.init(dots, 7, 200);
+    client.init(spread, 7, 200);
     client.run(200, 0);
 
     // A full budget consumed without stalling must surface as done: false
@@ -124,6 +125,25 @@ describe("optimizer worker protocol", () => {
     const terminal = await h.terminal;
     expect(terminal.done).toBe(true);
     expect(terminal.bestLayouts).toBeDefined();
+    expect(h.errors).toEqual([]);
+  });
+
+  it("certifies a board whose best possible score is zero instead of running the cap", async () => {
+    const h = createHarness();
+    const dots = dotLayout(
+      6,
+      6,
+      Array.from({ length: 4 }, (_, i): [number, number] => [i, 0]),
+    );
+    // A huge budget: without certification this would run to the 60s wall-clock
+    // cap before reporting anything terminal.
+    client.init(dots, 2, 100_000_000);
+    client.run(5_000, 0);
+
+    const terminal = await h.terminal;
+    expect(terminal.provablyOptimal).toBe(true);
+    expect(terminal.upperBound).toBe(0);
+    expect(terminal.score).toBe(0);
     expect(h.errors).toEqual([]);
   });
 
@@ -167,15 +187,15 @@ describe("optimizer worker protocol", () => {
 
   it("a second run supersedes the first: only one terminal message", async () => {
     const h = createHarness();
-    // Dots never certify and won't stall in a few chunks, so both loops are
-    // still live when the pause lands -- unlike synergyLayout, which each run
-    // would finish outright.
-    const dots = dotLayout(
+    // This layout never certifies and won't stall in a few chunks, so both
+    // loops are still live when the pause lands -- unlike synergyLayout, which
+    // each run would finish outright.
+    const spread = clusterLayout(
       6,
       6,
       Array.from({ length: 6 }, (_, i): [number, number] => [i, 0]),
     );
-    client.init(dots, 11, 1_000_000);
+    client.init(spread, 11, 1_000_000);
     // Optimize / Cancel / Optimize in quick succession. The second loop must
     // retire the first rather than step the same session alongside it, or both
     // post a terminal snapshot for one user-visible run.

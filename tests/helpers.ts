@@ -36,7 +36,9 @@ export const synergyLayout: EngineLayout = {
 };
 
 // Single-cell items with no tags or synergies: every arrangement scores 0, so
-// all distinct positions tie and nothing is ever provably optimal.
+// all distinct positions tie. The upper bound is 0 too, which the engine now
+// treats as a real bound -- these layouts certify as provably optimal on the
+// first step. Use clusterLayout for a run that keeps going.
 export function dotLayout(gridW: number, gridH: number, positions: Cell[]): EngineLayout {
   const placements: Placement[] = positions.map(([x, y], i) => ({
     id: `p${i}`,
@@ -47,6 +49,30 @@ export function dotLayout(gridW: number, gridH: number, positions: Cell[]): Engi
   }));
   return {
     itemTypes: [{ id: "dot", tags: [], synergies: [], cells: [[0, 0]] }],
+    gridW,
+    gridH,
+    disabledCells: [],
+    placements,
+  };
+}
+
+// Single-cell items with a mutual positive synergy. The upper bound relaxes
+// away geometry (it lets every item claim its best four neighbours at once),
+// so it sits well above what the pieces can actually achieve packed on a grid
+// -- the run never certifies, and the space is far too large to stall in a few
+// small budgets. The fixture for "this run keeps going".
+export function clusterLayout(gridW: number, gridH: number, positions: Cell[]): EngineLayout {
+  const placements: Placement[] = positions.map(([x, y], i) => ({
+    id: `p${i}`,
+    type: "node",
+    x,
+    y,
+    rot: 0,
+  }));
+  return {
+    itemTypes: [
+      { id: "node", tags: ["x"], synergies: [{ tag: "x", positive: true }], cells: [[0, 0]] },
+    ],
     gridW,
     gridH,
     disabledCells: [],
