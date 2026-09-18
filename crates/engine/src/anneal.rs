@@ -1144,32 +1144,44 @@ mod tests {
 
     #[test]
     fn adjacency_fp_captures_asymmetric_shape_rotation() {
-        // An asymmetric (L-shaped) item whose rotation changes which cells it
-        // occupies: if that changes adjacency with a neighbor, the fingerprint
-        // must differ; if the neighbor remains the same, it must be equal.
+        // The L covers [(0,0),(1,0),(0,1)] at rot 0 and [(0,0),(1,0),(1,1)] at
+        // rot 1, so rotating it changes which cells a fixed neighbor can touch.
+        // The fingerprint tracks adjacency, not pose: it must move only when
+        // the adjacency actually changes.
         let rots = {
             let mut r = l_rotations();
             // Add a 1x1 neighbor type.
             r.push([vec![(0, 0)], vec![(0, 0)], vec![(0, 0)], vec![(0, 0)]]);
             r
         };
-        // L at (0,0) rot=0, dot at (2,0): no adjacency at rot=0 for this shape.
-        let rot0 = adjacency_fp(
-            &[Pose { x: 0, y: 0, rot: 0 }, Pose { x: 2, y: 0, rot: 0 }],
-            &[0, 1],
-            &rots,
+        let fp = |rot: u8, dot: (i32, i32)| {
+            adjacency_fp(
+                &[
+                    Pose { x: 0, y: 0, rot },
+                    Pose {
+                        x: dot.0,
+                        y: dot.1,
+                        rot: 0,
+                    },
+                ],
+                &[0, 1],
+                &rots,
+            )
+        };
+
+        // (1,2) touches the L only at rot 1, through the cell (1,1).
+        assert_ne!(
+            fp(0, (1, 2)),
+            fp(1, (1, 2)),
+            "rotating into contact with the neighbor must change the fingerprint"
         );
-        // L at (0,0) rot=1: shape changes, may now touch (2,0).
-        let rot1 = adjacency_fp(
-            &[Pose { x: 0, y: 0, rot: 1 }, Pose { x: 2, y: 0, rot: 0 }],
-            &[0, 1],
-            &rots,
+
+        // (2,0) touches the L at both rotations, through the shared cell (1,0).
+        assert_eq!(
+            fp(0, (2, 0)),
+            fp(1, (2, 0)),
+            "a rotation that leaves adjacency unchanged must not change the fingerprint"
         );
-        // The important property: if adjacency changed, fingerprints differ.
-        // If it didn't (cells don't reach), they equal. Either way the function
-        // must not panic and must return consistently.
-        let _ = rot0;
-        let _ = rot1;
     }
 
     #[test]
