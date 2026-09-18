@@ -20,16 +20,15 @@ export function TagChips({
   const fgFaint = isWarm ? "rgba(60,50,40,0.4)" : "rgba(255,255,255,0.35)";
   const border = isWarm ? "rgba(60,50,40,0.12)" : "rgba(255,255,255,0.07)";
   const inputBg = isWarm ? "rgba(255,253,247,0.6)" : "rgba(255,255,255,0.03)";
-  const list = tags || [];
   const [draft, setDraft] = useState("");
   const add = (raw: string) => {
     const v = (raw || "").trim();
     setDraft("");
     if (!v) return;
-    if (list.some(x => x.toLowerCase() === v.toLowerCase())) return;
-    onChange([...list, v]);
+    if (tags.some(x => x.toLowerCase() === v.toLowerCase())) return;
+    onChange([...tags, v]);
   };
-  const remove = (t: string) => onChange(list.filter(x => x !== t));
+  const remove = (t: string) => onChange(tags.filter(x => x !== t));
   const chip: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
@@ -57,7 +56,7 @@ export function TagChips({
         borderRadius: 6,
       }}
     >
-      {list.map(t => (
+      {tags.map(t => (
         <span key={t} style={chip}>
           {t}
           <button
@@ -89,14 +88,14 @@ export function TagChips({
       <input
         value={draft}
         list={dlId}
-        placeholder={list.length ? `add tag${ELLIPSIS}` : `e.g. Sword, Electric${ELLIPSIS}`}
+        placeholder={tags.length ? `add tag${ELLIPSIS}` : `e.g. Sword, Electric${ELLIPSIS}`}
         onChange={e => setDraft(e.target.value)}
         onKeyDown={e => {
           if (e.key === "Enter" || e.key === ",") {
             e.preventDefault();
             add(draft);
-          } else if (e.key === "Backspace" && draft === "" && list.length)
-            remove(list[list.length - 1]);
+          } else if (e.key === "Backspace" && draft === "" && tags.length)
+            remove(tags[tags.length - 1]);
         }}
         onBlur={() => add(draft)}
         style={{
@@ -112,7 +111,7 @@ export function TagChips({
       />
       <datalist id={dlId}>
         {(suggestions || [])
-          .filter(s => !list.includes(s))
+          .filter(s => !tags.includes(s))
           .map(s => (
             <option key={s} value={s} />
           ))}
